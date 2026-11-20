@@ -51,6 +51,5 @@ web/                     browser simulator (single-file HTML, English and Spanis
 
 Code: MIT. Text and figures: CC BY 4.0. Please cite the article and the archived release (see `CITATION.cff`).
 
-- Repository: https://github.com/VFrankl0404/neurosim-edu
-- Browser simulator (no installation): https://vfrankl0404.github.io/neurosim-edu/ (Spanish: es.html, English: en.html)
+- Repository: [GitHub URL — to be added]
 - Archived release: [Zenodo DOI — to be added]
