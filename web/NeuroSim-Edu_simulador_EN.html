@@ -1,0 +1,1250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NeuroSim-Edu · Simulator</title>
+<script>
+/* Integration v2: web fonts only when the browser reports a connection; offline (double-click without network) the
+   system fonts are used directly and no failed request is logged. Canvases are redrawn once the fonts arrive. */
+if(navigator.onLine!==false){const l=document.createElement("link");l.rel="stylesheet";
+  l.href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap";
+  l.onload=()=>{if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(typeof grafRedraw==="function")grafRedraw()})};
+  document.head.appendChild(l)}
+</script>
+<style>
+/* Layout: lab-bench console — controls column on the left, oscilloscope-style traces on the right; tabs = modules */
+:root{
+  --bg:#f6f7fb; --panel:#ffffff; --fg:#1d2033; --muted:#5b6078; --line:#dde0ec;
+  --accent:#332288; --wine:#882255; --teal:#2f8f80; --rose:#b8505f; --olive:#7d7d22; --purple:#8a3f8a; --grid:#eceef5; --lts:#2b8fd0;
+  --f-display:"Space Grotesk",system-ui,sans-serif; --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12131c; --panel:#1b1d29; --fg:#e8e9f2; --muted:#a3a7bd; --line:#2f3245;
+  --accent:#9d8cff; --wine:#e07aa8; --teal:#5fd0bd; --rose:#f08a97; --olive:#d6d36a; --purple:#d08ad0; --grid:#252838; --lts:#88ccee; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12131c; --panel:#1b1d29; --fg:#e8e9f2; --muted:#a3a7bd; --line:#2f3245;
+  --accent:#9d8cff; --wine:#e07aa8; --teal:#5fd0bd; --rose:#f08a97; --olive:#d6d36a; --purple:#d08ad0; --grid:#252838; --lts:#88ccee; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--f-display);font-size:1.8rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h1 small{display:block;font-family:var(--f-body);font-weight:400;font-size:.95rem;color:var(--muted);letter-spacing:0}
+.lang{display:flex;gap:4px;border:1px solid var(--line);border-radius:8px;padding:3px;background:var(--panel)}
+.lang button{border:0;background:none;color:var(--muted);font:500 .85rem var(--f-body);padding:4px 10px;border-radius:6px;cursor:pointer}
+.lang button[aria-pressed="true"]{background:var(--accent);color:var(--panel)}
+nav{display:flex;flex-wrap:wrap;gap:6px}
+nav button{border:1px solid var(--line);background:var(--panel);color:var(--fg);font:500 .9rem var(--f-body);padding:8px 14px;border-radius:999px;cursor:pointer}
+nav button .n{font-family:var(--f-mono);color:var(--muted);margin-right:6px}
+nav button[aria-selected="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mod{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:820px){.mod{grid-template-columns:minmax(0,1fr)}}
+.ctl{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:14px}
+.ctl h2{font-family:var(--f-display);font-size:1.1rem;margin:0}
+.ctl p.lead{margin:0;color:var(--muted);font-size:.9rem}
+.row{display:grid;gap:4px}
+.row label{display:flex;justify-content:space-between;font-size:.88rem;gap:8px}
+.row output{font-family:var(--f-mono);font-variant-numeric:tabular-nums;color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select{width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button,.run{border:1px solid var(--line);background:var(--bg);color:var(--fg);font:500 .82rem var(--f-body);padding:6px 10px;border-radius:6px;cursor:pointer}
+.run{background:var(--accent);color:var(--panel);border-color:var(--accent);font-size:.9rem;padding:8px 12px}
+.out{display:grid;gap:12px;min-width:0}
+.plot{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 10px 4px}
+.plot .cap{font-size:.82rem;color:var(--muted);padding:0 6px 4px}
+canvas{width:100%;display:block}
+[hidden]{display:none!important}
+.stats{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:.85rem}
+.chip b{font-family:var(--f-mono);font-weight:500;color:var(--accent);font-variant-numeric:tabular-nums}
+.note{background:var(--panel);border-left:3px solid var(--wine);border-radius:0 8px 8px 0;padding:10px 14px;font-size:.9rem;max-width:75ch}
+.label-sm{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+footer{color:var(--muted);font-size:.82rem;max-width:80ch}
+/* UX: header tools, active presets, reset, stale state ------------------------------------------- */
+.uxbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.uxbtn{border:1px solid var(--line);background:var(--panel);color:var(--fg);font:500 .84rem var(--f-body);padding:5px 10px;border-radius:8px;cursor:pointer}
+.uxbtn:hover,.presets button:hover{border-color:var(--accent)}
+.ctl .uxbtn{justify-self:start;background:var(--bg)}
+.presets button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.run.stale{outline:2px dashed var(--wine);outline-offset:2px}
+.stalemsg{margin:0;font-size:.82rem;color:var(--wine)}
+.run:disabled{opacity:.7;cursor:progress}
+/* UX: first-visit onboarding */
+.onb{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0 12px 12px 0;padding:12px 16px;display:grid;gap:8px;max-width:90ch}
+.onb h2{font-family:var(--f-display);font-size:1rem;margin:0}
+.onb ol{margin:0;padding-left:1.3em;display:grid;gap:2px}
+.onb p{margin:0;color:var(--muted);font-size:.88rem}
+.onb .uxbar .uxbtn:first-child{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+/* UX: guide panel (what to observe, challenges, clinical cases) */
+details.guide{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+details.guide>summary{font-family:var(--f-display);font-weight:500;cursor:pointer}
+.gbody h3{font-family:var(--f-display);font-size:.95rem;margin:14px 0 6px}
+.gbody ul,.gbody ol{margin:0;padding-left:1.3em;display:grid;gap:10px;max-width:78ch;font-size:.92rem}
+.gbody .reto p{margin:0 0 6px}
+.gbody details summary{cursor:pointer;color:var(--accent);font-size:.86rem;margin-top:4px}
+.gbody details>div,.gbody details>p{margin:6px 0 0;padding:8px 10px;background:var(--bg);border-radius:6px;font-size:.9rem}
+.cases{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.case{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:6px;align-content:start;font-size:.9rem}
+.case h4{margin:0;font-size:.93rem}
+.case p{margin:0}
+.case .vig{font-style:italic}
+.case p.lim{border-left:3px solid var(--olive);color:var(--muted)}
+/* UX: glossary dialog */
+dialog#gl{width:min(680px,calc(100vw - 32px));max-height:85vh;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--fg);padding:16px 20px}
+dialog#gl::backdrop{background:rgba(10,10,20,.45)}
+#gl h2{font-family:var(--f-display);font-size:1.15rem;margin:0 0 10px}
+#gl dl{margin:0}
+#gl dt{font-weight:600;margin-top:10px}
+#gl dd{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+#gl .uxbtn{position:sticky;top:0;float:right}
+/* UX: phones — keep the main trace in view while moving sliders (first plot goes on top and sticks) */
+@media screen and (max-width:820px){
+  .mod>.out{display:contents}
+  .mod>.out>.plot:first-child{order:-1;position:sticky;top:0;z-index:3;box-shadow:0 6px 12px -6px rgba(0,0,0,.25)}
+}
+/* UX: worksheet + print */
+#ws{display:none}
+@media print{
+  :root,:root[data-theme]{--bg:#fff;--panel:#fff;--fg:#000;--muted:#333;--line:#bbb}
+  body{padding:0;font-size:11pt}
+  nav,.lang,.uxbar,.presets,.run,.ctl .uxbtn,.onb,details.guide,.stalemsg{display:none!important}
+  .mod{grid-template-columns:minmax(0,1fr)}
+  canvas{height:auto!important}
+  .plot,.stats,.note{break-inside:avoid}
+  body.ws-print .wrap{display:none}
+  body.ws-print #ws{display:block}
+  #ws h1{font-family:var(--f-display);font-size:16pt;margin:0 0 4px}
+  #ws h2{font-family:var(--f-display);font-size:13pt;margin:16px 0 6px;break-after:avoid}
+  #ws .wsq{break-inside:avoid;margin:0 0 10px}
+  #ws .wsq p{margin:0 0 4px}
+  #ws .ln{border-bottom:1px solid #999;min-height:1.9em;font-size:9pt;color:#555;padding-top:2px}
+  #ws .key{break-before:page}
+  #ws .key p{margin:0 0 6px;font-size:10pt}
+}
+/* GRAF: plot tokens — Tol "muted" families of the article figures, re-stepped and validated
+   (dataviz validate_palette.js, all-pairs) against #ffffff (light) and #1b1d29 (dark).
+   --s1 wine / --s2 indigo / --s3 teal = series slots; --exc/--inh = raster populations; --stim = stimulus bar (paper sand). */
+:root{--s1:#9b2a62;--s2:#4b3bb5;--s3:#0f9a87;--exc:#0f9a87;--inh:#c2455a;--stim:#d9c66a;--ghost:#9aa0b8;--axis:#8a8fa6}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--s1:#e070a5;--s2:#8a78f5;--s3:#0c8a78;--exc:#14a893;--inh:#e0606f;--stim:#8f8440;--ghost:#666b88;--axis:#555a73}}
+:root[data-theme="dark"]{--s1:#e070a5;--s2:#8a78f5;--s3:#0c8a78;--exc:#14a893;--inh:#e0606f;--stim:#8f8440;--ghost:#666b88;--axis:#555a73}
+.phead{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:4px 8px;padding:0 0 2px}
+.phead .cap{flex:1 1 240px;min-width:0}
+.ptools{display:flex;gap:4px;flex-shrink:0}
+.ptools button{border:1px solid var(--line);background:var(--bg);color:var(--muted);font:500 .74rem var(--f-body);padding:3px 8px;border-radius:6px;cursor:pointer;line-height:1.3}
+.ptools button:hover{color:var(--fg)}
+.ptools button[aria-pressed="true"]{color:var(--accent);border-color:var(--accent)}
+.pbox{position:relative;touch-action:pan-y}
+.pbox canvas.ov{position:absolute;left:0;top:0;pointer-events:none}
+.pbox canvas.main{cursor:crosshair}
+.ptip{position:absolute;top:4px;pointer-events:none;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;
+  box-shadow:0 2px 8px rgba(0,0,0,.12);padding:4px 8px;font:12px/1.45 var(--f-body);font-variant-numeric:tabular-nums;white-space:nowrap;z-index:2}
+.ptip .sw{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.ptip b{font-weight:600}
+@media (forced-colors:active){.ptools button[aria-pressed="true"]{outline:2px solid CanvasText}}
+/* GRAF: end */
+/* DATOS: estilos para las pestañas nuevas (protocolos HH, clasificador) */
+.run[disabled]{opacity:.6;cursor:progress}
+.qual{display:inline-block;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--wine);border:1px solid var(--wine);border-radius:4px;padding:0 5px;margin-left:4px}
+.cmwrap{display:flex;flex-wrap:wrap;gap:12px}
+.cm{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;overflow-x:auto;max-width:100%}
+.cm table{border-collapse:collapse;font-family:var(--f-mono);font-size:.8rem;font-variant-numeric:tabular-nums}
+.cm th,.cm td{padding:3px 6px;text-align:center;border:1px solid var(--line)}
+.cm th{font-weight:500;color:var(--muted)}
+.cm caption{font-size:.82rem;color:var(--muted);text-align:left;padding-bottom:4px;font-family:var(--f-body)}
+.bench{border-collapse:collapse;font-size:.85rem;width:100%}
+.bench th,.bench td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums}
+.bench th:first-child,.bench td:first-child{text-align:left}
+#pro-tab,#cls-cm{min-width:0}
+/* DATOS: fin estilos */
+/* Integration v2: print + small fixes for the merged features */
+@media print{.ptools,.ptip,.pbox canvas.ov,#pro-run,.stalemsg{display:none!important}}
+.cmwrap .cm{flex:1 1 260px}
+@media (max-width:420px){nav button{padding:7px 11px;font-size:.86rem}}
+/* Integration v2: end */
+/* UX: end */
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>NeuroSim-Edu <small data-i="subtitle"></small></h1>
+  <!-- UX: header tools (glossary, worksheet, theme) next to the language switch -->
+  <div class="uxbar">
+    <button class="uxbtn" id="ux-gl-btn" data-i="ux_gloss"></button>
+    <button class="uxbtn" id="ux-ws-btn" data-i="ux_print"></button>
+    <button class="uxbtn" id="ux-theme-btn" data-i="ux_theme"></button>
+    
+  </div>
+</header>
+<!-- UX: first-visit onboarding (dismissed state kept in localStorage "nse-onb") -->
+<section class="onb" id="ux-onb" hidden aria-labelledby="ux-onb-t">
+  <h2 id="ux-onb-t" data-i="ux_on_t"></h2>
+  <ol><li data-i="ux_on_1"></li><li data-i="ux_on_2"></li><li data-i="ux_on_3"></li></ol>
+  <p data-i="ux_on_note"></p>
+  <div class="uxbar"><button class="uxbtn" id="ux-onb-ok" data-i="ux_on_ok"></button><button class="uxbtn" id="ux-onb-gl" data-i="ux_gloss"></button></div>
+</section>
+<nav role="tablist" id="tabs"></nav>
+
+<!-- 1 Hodgkin-Huxley + clinical scenarios -->
+<section class="mod" id="m-hh" role="tabpanel" aria-labelledby="tab-0">
+  <div class="ctl">
+    <h2 data-i="hh_t"></h2><p class="lead" data-i="hh_l"></p>
+    <div class="row"><label for="hh-I"><span data-i="I_ua"></span><output id="hh-I-o"></output></label><input id="hh-I" type="range" min="0" max="30" step="0.25" value="10"></div>
+    <div class="row"><label for="hh-dur"><span data-i="pulse"></span><output id="hh-dur-o"></output></label><input id="hh-dur" type="range" min="1" max="140" step="1" value="100"></div>
+    <div class="row"><label for="hh-na"><span data-i="nablock"></span><output id="hh-na-o"></output></label><input id="hh-na" type="range" min="0" max="100" step="5" value="0"></div>
+    <div class="row"><label for="hh-k"><span data-i="kblock"></span><output id="hh-k-o"></output></label><input id="hh-k" type="range" min="0" max="60" step="5" value="0"></div>
+    <div class="row"><label for="hh-ko"><span data-i="kout"></span><output id="hh-ko-o"></output></label><input id="hh-ko" type="range" min="2" max="14" step="0.5" value="4"></div>
+    <!-- DATOS: temperatura (Q10) y calcio extracelular (desplazamiento de las compuertas) -->
+    <div class="row"><label for="hh-T"><span data-i="temp"></span><output id="hh-T-o"></output></label><input id="hh-T" type="range" min="6.3" max="30" step="0.1" value="6.3"></div>
+    <div class="row"><label for="hh-ca"><span data-i="caout"></span><output id="hh-ca-o"></output></label><input id="hh-ca" type="range" min="0.3" max="3" step="0.05" value="1"></div>
+    <div><div class="label-sm" data-i="scen"></div>
+      <div class="presets" id="hh-presets"></div></div>
+    <button class="uxbtn" data-reset="0" data-i="ux_reset"></button>
+  </div>
+  <div class="out">
+    <div class="plot"><div class="cap" data-i="hh_c1"></div><canvas id="hh-v" height="260" data-ghost="1"></canvas></div>
+    <div class="plot"><div class="cap" data-i="hh_c2"></div><canvas id="hh-g" height="170"></canvas></div>
+    <div class="stats" id="hh-s"></div>
+    <div class="note" id="hh-note" aria-live="polite"></div>
+    <details class="guide" open><summary data-i="ux_guide"></summary><div class="gbody" id="gb-hh"></div></details>
+  </div>
+</section>
+
+<!-- 2 LIF -->
+<section class="mod" id="m-lif" role="tabpanel" aria-labelledby="tab-1" hidden>
+  <div class="ctl">
+    <h2 data-i="lif_t"></h2><p class="lead" data-i="lif_l"></p>
+    <div class="row"><label for="lif-I"><span data-i="I_na"></span><output id="lif-I-o"></output></label><input id="lif-I" type="range" min="0" max="5" step="0.1" value="2"></div>
+    <div class="row"><label for="lif-dt"><span>Δt (ms)</span></label>
+      <select id="lif-dt"><option value="0.01">0.01</option><option value="0.1" selected>0.1</option><option value="0.5">0.5</option><option value="1">1</option></select></div>
+    <button class="uxbtn" data-reset="1" data-i="ux_reset"></button>
+  </div>
+  <div class="out">
+    <div class="plot"><div class="cap" data-i="lif_c1"></div><canvas id="lif-v" height="240" data-ghost="1"></canvas></div>
+    <div class="plot"><div class="cap" data-i="lif_c2"></div><canvas id="lif-f" height="220"></canvas></div>
+    <div class="stats" id="lif-s"></div>
+    <div class="note" id="lif-note" aria-live="polite"></div>
+    <details class="guide" open><summary data-i="ux_guide"></summary><div class="gbody" id="gb-lif"></div></details>
+  </div>
+</section>
+
+<!-- 3 Izhikevich -->
+<section class="mod" id="m-izh" role="tabpanel" aria-labelledby="tab-2" hidden>
+  <div class="ctl">
+    <h2 data-i="izh_t"></h2><p class="lead" data-i="izh_l"></p>
+    <div class="row"><label for="izh-cls" data-i="cls"></label><select id="izh-cls"></select></div>
+    <div class="row"><label for="izh-a"><span data-i="izh_a"></span><output id="izh-a-o"></output></label><input id="izh-a" type="range" min="0.01" max="0.12" step="0.005" value="0.02"></div>
+    <div class="row"><label for="izh-b"><span data-i="izh_b"></span><output id="izh-b-o"></output></label><input id="izh-b" type="range" min="0.15" max="0.3" step="0.005" value="0.2"></div>
+    <div class="row"><label for="izh-c"><span data-i="izh_c"></span><output id="izh-c-o"></output></label><input id="izh-c" type="range" min="-70" max="-45" step="1" value="-65"></div>
+    <div class="row"><label for="izh-d"><span data-i="izh_d"></span><output id="izh-d-o"></output></label><input id="izh-d" type="range" min="0" max="10" step="0.5" value="8"></div>
+    <div class="row"><label for="izh-I"><span data-i="I_dim"></span><output id="izh-I-o"></output></label><input id="izh-I" type="range" min="0" max="20" step="0.5" value="10"></div>
+    <button class="uxbtn" data-reset="2" data-i="ux_reset"></button>
+  </div>
+  <div class="out">
+    <div class="plot"><div class="cap" data-i="izh_c1"></div><canvas id="izh-v" height="260" data-ghost="1"></canvas></div>
+    <div class="stats" id="izh-s"></div>
+    <div class="note" id="izh-note" aria-live="polite"></div>
+    <details class="guide" open><summary data-i="ux_guide"></summary><div class="gbody" id="gb-izh"></div></details>
+  </div>
+</section>
+
+<!-- 4 Network -->
+<section class="mod" id="m-net" role="tabpanel" aria-labelledby="tab-3" hidden>
+  <div class="ctl">
+    <h2 data-i="net_t"></h2><p class="lead" data-i="net_l"></p>
+    <div class="row"><label for="net-g"><span data-i="g"></span><output id="net-g-o"></output></label><input id="net-g" type="range" min="1" max="8" step="0.5" value="6"></div>
+    <div class="row"><label for="net-ext"><span data-i="ext"></span><output id="net-ext-o"></output></label><input id="net-ext" type="range" min="5" max="12" step="0.5" value="7"></div>
+    <div class="row"><label for="net-ni"><span data-i="ninh"></span><output id="net-ni-o"></output></label><input id="net-ni" type="range" min="50" max="200" step="25" value="200"></div>
+    <div class="row"><label for="net-th"><span data-i="nth"></span><output id="net-th-o"></output></label><input id="net-th" type="range" min="-50" max="-46" step="0.5" value="-50"></div>
+    <div class="presets" id="net-presets"></div>
+    <button class="run" id="net-run" data-i="run"></button>
+    <p class="stalemsg" id="net-stale" data-i="ux_stale" hidden></p>
+    <button class="uxbtn" data-reset="3" data-i="ux_reset"></button>
+  </div>
+  <div class="out">
+    <div class="plot"><div class="cap" data-i="net_c1"></div><canvas id="net-r" height="280"></canvas></div>
+    <div class="plot"><div class="cap" data-i="net_c2"></div><canvas id="net-p" height="160" data-ghost="1"></canvas></div>
+    <div class="stats" id="net-s"></div>
+    <div class="note" id="net-note" aria-live="polite"></div>
+    <details class="guide" open><summary data-i="ux_guide"></summary><div class="gbody" id="gb-net"></div></details>
+  </div>
+</section>
+
+<!-- 5 Protocolos de Hodgkin-Huxley (DATOS) -->
+<section class="mod" id="m-pro" role="tabpanel" aria-labelledby="tab-4" hidden>
+  <div class="ctl">
+    <h2 data-i="pro_t"></h2><p class="lead" data-i="pro_l"></p>
+    <div class="row"><label for="pro-sel" data-i="pro_sel"></label>
+      <select id="pro-sel"><option value="vc" data-i="pr_vc" selected></option><option value="pp" data-i="pr_pp"></option><option value="fi" data-i="pr_fi"></option><option value="kw" data-i="pr_kw"></option><option value="cost" data-i="pr_cost"></option></select></div>
+    <div class="row" id="pro-vc-row"><label for="pro-vc"><span data-i="vc_lab"></span><output id="pro-vc-o"></output></label><input id="pro-vc" type="range" min="-100" max="60" step="5" value="0"></div>
+    <div class="row" id="pro-int-row"><label for="pro-int"><span data-i="pp_int"></span><output id="pro-int-o"></output></label><input id="pro-int" type="range" min="1.5" max="25" step="0.5" value="6"></div>
+    <div class="row" id="pro-amp-row"><label for="pro-amp"><span data-i="pp_amp"></span><output id="pro-amp-o"></output></label><input id="pro-amp" type="range" min="0.5" max="10" step="0.25" value="2"></div>
+    <button class="run" id="pro-run" data-i="pro_run"></button>
+    <p class="lead" id="pro-cond"></p>
+    <button class="uxbtn" data-reset="4" data-i="ux_reset"></button>
+  </div>
+  <div class="out">
+    <div class="plot"><div class="cap" id="pro-c1"></div><canvas id="pro-a" height="250"></canvas></div>
+    <div class="plot" id="pro-pb"><div class="cap" id="pro-c2"></div><canvas id="pro-b" height="220"></canvas></div>
+    <div id="pro-tab"></div>
+    <div class="stats" id="pro-s"></div>
+    <div class="note" id="pro-note" aria-live="polite"></div>
+    <details class="guide" open><summary data-i="ux_guide"></summary><div class="gbody" id="gb-pro"></div></details>
+  </div>
+</section>
+
+<!-- 6 Clasificador (DATOS) -->
+<section class="mod" id="m-cls" role="tabpanel" aria-labelledby="tab-5" hidden>
+  <div class="ctl">
+    <h2 data-i="cls_t"></h2><p class="lead" data-i="cls_l"></p>
+    <div class="row"><label for="cls-n"><span data-i="cls_n"></span><output id="cls-n-o"></output></label><input id="cls-n" type="range" min="40" max="120" step="20" value="120"></div>
+    <div class="row"><label for="cls-noise"><span data-i="cls_noise"></span><output id="cls-noise-o"></output></label><input id="cls-noise" type="range" min="0" max="8" step="0.5" value="2"></div>
+    <div class="row"><label for="cls-jit"><span data-i="cls_jit"></span><output id="cls-jit-o"></output></label><input id="cls-jit" type="range" min="0" max="30" step="5" value="10"></div>
+    <div class="row"><label for="cls-feat" data-i="cls_feat"></label>
+      <select id="cls-feat"><option value="5" data-i="cls_f5" selected></option><option value="2" data-i="cls_f2"></option></select></div>
+    <div class="row"><label for="cls-seed"><span data-i="cls_seed"></span><output id="cls-seed-o"></output></label><input id="cls-seed" type="range" min="0" max="9" step="1" value="0"></div>
+    <button class="run" id="cls-run" data-i="cls_run"></button>
+    <p class="stalemsg" id="cls-stale" data-i="ux_stale_cls" hidden></p>
+    <button class="uxbtn" data-reset="5" data-i="ux_reset"></button>
+  </div>
+  <div class="out">
+    <div class="plot"><div class="cap" data-i="cls_c1"></div><canvas id="cls-sc" height="260"></canvas></div>
+    <div class="stats" id="cls-s"></div>
+    <div class="plot"><div class="cap" data-i="cls_c2"></div><canvas id="cls-loss" height="180"></canvas></div>
+    <div class="cmwrap" id="cls-cm"></div>
+    <div class="note" id="cls-note" aria-live="polite"></div>
+    <details class="guide" open><summary data-i="ux_guide"></summary><div class="gbody" id="gb-cls"></div></details>
+  </div>
+</section>
+
+<footer data-i="foot"></footer>
+</div>
+<!-- UX: glossary dialog and printable worksheet container (filled by JS) -->
+<dialog id="gl" aria-labelledby="gl-t"><button class="uxbtn" id="gl-close" data-i="ux_close"></button><h2 id="gl-t" data-i="ux_gloss"></h2><dl id="gl-dl"></dl></dialog>
+<div id="ws"></div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- texts
+const TX={
+en:{subtitle:"Classroom simulator: from ion channels to circuits. Move a control and watch the effect.",
+ tab_hh:"Hodgkin-Huxley & clinic",tab_lif:"Integrate-and-fire",tab_izh:"Izhikevich",tab_net:"E/I network",
+ hh_t:"Ion channels and clinical scenarios",hh_l:"Hodgkin-Huxley model (squid axon at 6.3 °C, Δt = 0.01 ms; smaller Δt when temperature is raised). Scenarios are qualitative: not human thresholds or doses.",
+ I_ua:"Injected current (µA/cm²)",pulse:"Pulse duration (ms)",nablock:"Na⁺ channel block (%)",kblock:"K⁺ channel block (%)",kout:"Extracellular K⁺ (mM)",scen:"Scenarios",
+ hh_c1:"Membrane potential (mV). The ochre bar below the trace marks the stimulus.",hh_c2:"Gates: m (Na⁺ activation), h (Na⁺ inactivation), n (K⁺ activation)",
+ p_ctrl:"Control",p_lido:"Lidocaine (Na⁺ −30%)",p_tetx:"TTX (Na⁺ −100%)",p_4ap:"4-AP (K⁺ −40%)",p_k7:"Hyperkalaemia 7 mM",p_k12:"Hyperkalaemia 12 mM",p_k25:"Hypokalaemia 2.5 mM",
+ spikes:"Spikes",rate:"Rate",vrest:"Resting V",ek:"E_K",width:"Width of 1st spike",
+ lif_t:"Leaky integrate-and-fire",lif_l:"One rule: integrate to threshold (−50 mV), fire, reset. Its firing rate has an exact solution, so numerical error can be measured.",
+ I_na:"Current (nA)",lif_c1:"Membrane potential (mV); dotted line: threshold",lif_c2:"Frequency-current curve: exact (line) and simulated with the chosen Δt (dots)",
+ rheo:"Rheobase",sim:"Simulated",exact:"Exact",err:"Error",
+ izh_t:"Firing patterns",izh_l:"Two variables and four parameters (a, b, c, d) give five cortical cell types. Change c or d and watch regular firing turn into bursts.",
+ cls:"Published class",I_dim:"Current I (dimensionless)",izh_c1:"v (mV) during a current step from 20 ms",
+ net_t:"Excitatory-inhibitory network",net_l:"800 excitatory and up to 200 inhibitory LIF cells, random 10% connectivity. g is the relative strength of inhibition.",
+ g:"Relative inhibition g",ext:"External input (kHz per cell)",ninh:"Inhibitory cells",run:"Simulate 400 ms",running:"Simulating…",
+ n_weak:"Weak inhibition (g = 2)",n_strong:"Strong inhibition (g = 6)",n_loss:"Interneuron loss",
+ net_c1:"Raster: one in four cells (teal, excitatory; rose, inhibitory; dotted line: E/I boundary)",net_c2:"Population rate (Hz, 1 ms bins)",
+ cv:"CV of ISIs",sync:"Synchrony index",mrate:"Mean rate",
+ foot:"NeuroSim-Edu 1.2 · web version of the article's material. Same equations as the Python package; temperature, Ca²⁺ and the network threshold are qualitative extensions. Euler method. For teaching. Code MIT; text CC BY 4.0.",
+ time:"Time (ms)",
+ /* UX: EN strings ------------------------------------------------------------------------------- */
+ ux_reset:"Reset",ux_gloss:"Glossary",ux_print:"Worksheet",ux_theme:"Light/dark",ux_close:"Close",
+ ux_print_t:"Prints the challenges and cases of every tab with space for answers; the instructor's key is on the last page.",
+ ux_theme_t:"Switch between light and dark theme (useful when projecting).",ux_reset_t:"Return this tab to its starting values.",
+ ux_on_t:"How to use this simulator",
+ ux_on_1:"Pick a module from the tabs: 1 to 4 goes from ion channels to circuits; 5 gathers laboratory experiments on Hodgkin-Huxley and 6 trains a machine-learning classifier.",
+ ux_on_2:"Before moving a control, predict what will happen; then check it on the plot and explain any difference.",
+ ux_on_3:"Below the plots, the “Guide” says what to observe and offers challenges with answers and clinical cases. “Set up” adjusts the controls for you.",
+ ux_on_note:"Parameters are from the squid axon: use them to reason about mechanisms, not as clinical thresholds or doses.",
+ ux_on_ok:"Got it",
+ ux_guide:"Guide: what to observe, challenges and cases",ux_obs:"What to observe",ux_ret:"Challenges (predict, observe, explain)",ux_cases:"Clinical cases",
+ ux_load:"Set up",ux_load_t:"Set the controls to the challenge's starting point",ux_ans:"Show answer",ux_apply:"Apply to the model",
+ ux_interp:"Interpretation",ux_lim:"Model limit",ux_pred:"Prediction",ux_obsv:"Observation",ux_expl:"Explanation",
+ ux_ws_t:"NeuroSim-Edu · Worksheet",ux_ws_name:"Name",ux_ws_date:"Date",
+ ux_ws_intro:"For each challenge, write your prediction before simulating, note what you observe and explain the difference. Model values are not clinical thresholds.",
+ ux_ws_key:"Answer key (for the instructor)",ux_ws_case:"Case",
+ ux_custom:"Custom",ux_stale:"You changed parameters: press “Simulate” to see their effect.",
+ ux_vmean:"Mean V without stimulus",ux_spont:"fires on its own",
+ izh_a:"a · recovery speed (1/ms)",izh_b:"b · sensitivity of u to v",izh_c:"c · reset of v (mV)",izh_d:"d · increase of u after each spike",
+ cl_RS:"regular (pyramidal)",cl_IB:"initial burst",cl_CH:"repeated bursts",cl_FS:"fast (interneuron)",cl_LTS:"low threshold (interneuron)",
+ /* UX: dynamic notes moved here from hhNote()/netShow() so the ES/EN split keeps every string in TX */
+ nt_hh_tetx:"Without sodium current there is no upstroke, only passive depolarisation. This is why tetrodotoxin paralyses.",
+ nt_hh_khi:"With high K⁺ the membrane stays depolarised and gate h keeps Na⁺ channels inactivated: the cell cannot fire (depolarisation block), which explains weakness in severe hyperkalaemia.",
+ nt_hh_kmid:"With moderately high K⁺ the membrane nears threshold and the cell may fire on its own, even without a stimulus. Try I = 0.",
+ nt_hh_klo:"With low K⁺ the membrane hyperpolarises and is harder to fire: reduced excitability, as in hypokalaemic weakness.",
+ nt_hh_kb40:"With 40% K⁺ block or more, rest becomes unstable and the cell fires spontaneously: less K⁺ current means more excitability (4-AP can cause seizures, especially at high doses).",
+ nt_hh_kb:"Less K⁺ current slows repolarisation: the action potential widens.",
+ nt_hh_na:"With {na}% Na⁺ block more current is needed. Raise I and find the new threshold: this is how lidocaine and several antiseizure drugs act.",
+ nt_hh_ctrl:"Control. Lower the current to find the threshold for repetitive firing (about 6.3 µA/cm²): the rate jumps from 0 to about 50 Hz, typical of type II excitability.",
+ nt_net0:"Asynchronous irregular activity: cells fire almost independently, as in the awake cortex. The synchrony index (variance/mean of the population count) is near 1 for independent firing.",
+ nt_net1:"Irregular activity with moderate synchrony: inhibition keeps rates low, but small collective waves appear. Compare with g = 2 or remove interneurons.",
+ nt_net2:"Hypersynchronous activity: almost the whole population fires together in volleys, a computational picture of seizure hypersynchrony.",
+ nt_lif_sub:"Below rheobase: V settles at E_L + R·I = {v} mV and never reaches the −50 mV threshold. No spike, however long you wait.",
+ nt_lif_dt:"With Δt = {dt} ms each Euler step is large: on the f-I curve the dots drift away from the exact line. Read the “Error” chip and compare with Δt = 0.01 ms.",
+ nt_lif_ok:"Each spike resets V to −65 mV and, after 2 ms refractory, the cell integrates again. More current shortens the climb: the rate grows continuously from 0 (type I excitability).",
+ nt_izh_RS:"RS (regular spiking): a typical pyramidal neuron. Intervals lengthen after the first spike (adaptation) because each spike adds d to the recovery variable u.",
+ nt_izh_IB:"IB (intrinsically bursting): an initial burst, then tonic firing. Raising the reset c to −55 mV and lowering d to 4 is enough.",
+ nt_izh_CH:"CH (chattering): fast repeated bursts. Bursting cells can help synchronise and initiate epileptiform discharges.",
+ nt_izh_FS:"FS (fast spiking): parvalbumin interneuron; fires fast without adapting because a = 0.1 recovers u quickly. Note: its “ISI < 10 ms” is 100% without any bursts; this is fast tonic firing.",
+ nt_izh_LTS:"LTS (low-threshold spiking): interneuron with b = 0.25; fires with marked adaptation and responds to small currents.",
+ nt_izh_custom:"Your own parameters. Use “ISI < 10 ms” with care: high values mean bursts or very fast tonic firing; look at the trace.",
+ /* UX: what to observe (arrays) */
+ obs_hh:["The upstroke of the action potential is Na⁺ entry (m opens fast); the downstroke is Na⁺ inactivation (h falls) and K⁺ exit (n rises).",
+  "When you change extracellular K⁺, watch the “E_K” and “Resting V” chips: rest follows E_K, but less steeply, because the leak is fixed.",
+  "In each scenario compare the number of spikes and the width of the first one with the control.",
+  "Temperature and Ca²⁺ are qualitative extensions: they speed up or shift the gates. If the cell fires on its own, the chip shows mean V instead of rest."],
+ obs_lif:["V climbs along a curve (a leaky capacitor charging) and has no action-potential shape: the spike is just a rule.",
+  "On the f-I curve the rate starts at 0 at rheobase (type I), unlike Hodgkin-Huxley (type II).",
+  "The dots drift from the line as Δt grows: this is numerical error, measurable because the exact solution is known."],
+ obs_izh:["When you change class, look at the start of the train: initial burst, adaptation or steady rhythm?",
+  "c sets where v returns after each spike; d sets how much the cell is slowed down after each spike.",
+  "The small dip before 20 ms is an artefact: the simulation starts away from the model's resting point."],
+ obs_net:["In the raster, vertical stripes are many cells firing together (synchrony).",
+  "A CV of ISIs near 0 means clock-like firing; near 1, irregular firing as in cortex.",
+  "Connectivity is random but the seed is fixed: the same settings always give the same result."],
+ /* UX: challenges (q = question, a = expected answer; numbers checked with this simulator) */
+ r_hh1_q:"Threshold for repetitive firing. Lower the current in 0.25 steps. Below which value does the train disappear? Does the rate fall gradually to 0 or jump?",
+ r_hh1_a:"Between 6.0 and 6.25 µA/cm²: at 6.25 it fires at about 52 Hz and at 6.0 it gives only one or two spikes. The rate jumps from 0 to about 50 Hz: type II excitability (compare with tab 2).",
+ r_hh2_q:"Na⁺ block (lidocaine-like). With 20% block and I = 10, how many spikes are there? Raise I: from which current does the train return? Repeat with 30%.",
+ r_hh2_a:"With 20% and I = 10 there is a single spike; the train returns at about 13.5 µA/cm² (on the f-I curve of tab 5, with 1 µA/cm² steps, it appears at 14). With 30% there is no repetitive firing even at 30 µA/cm² (at most 2 spikes). Fewer available Na⁺ channels raise the threshold, in a dose-dependent way.",
+ r_hh3_q:"K⁺ block (4-AP-like). With a short pulse (1 ms, 20 µA/cm²) raise K⁺ block from 0 to 30% and read “Width of 1st spike”. Then set 40% and I = 0.",
+ r_hh3_a:"Width goes from about 1.70 to 1.90 ms: repolarisation is slower. With 40% the cell fires on its own, without a stimulus (about 7 spikes in 160 ms, ≈ 46 Hz): less K⁺ current means more excitability.",
+ r_hh4_q:"Extracellular potassium. With I = 0, raise K⁺ from 4 to 14 mM in 0.5 steps. In which range does the cell fire on its own? What happens above it?",
+ r_hh4_a:"Silent up to 5.5 mM; fires on its own from 6 to 8 mM (about 47–78 Hz) and falls silent again from 8.5 mM, now depolarised (about −39 mV at 12 mM): depolarisation block.",
+ r_hh5_q:"Why silent when closer to threshold? With K⁺ 12 mM and I = 8, look at the gates plot: where is h compared with the control?",
+ r_hh5_a:"h stays near 0.05 (about 0.6 in the control): almost all Na⁺ channels are inactivated and do not open even when current is injected. This is why severe hyperkalaemia causes weakness rather than spasm.",
+ r_lif1_q:"Rheobase. Raise the current from 1.0 nA. What is the first value that produces spikes? Why exactly there?",
+ r_lif1_a:"1.6 nA (1.5 does not fire). At steady state V = E_L + R·I = −65 + 10·I mV; it reaches threshold (−50 mV) only if R·I > 15 mV, that is, I > 1.5 nA.",
+ r_lif2_q:"Type I versus type II. Just above rheobase, what rate do you get? Could it be that low in Hodgkin-Huxley?",
+ r_lif2_a:"About 34 Hz at 1.6 nA, tending to 0 as I approaches 1.5 nA: the f-I curve is continuous (type I). In Hodgkin-Huxley the rate jumps from 0 to about 50 Hz (type II).",
+ r_lif3_q:"Numerical error. With I = 5 nA try Δt = 0.01, 0.1, 0.5 and 1 ms and note the “Error” chip. How does it change? Repeat with I = 2 nA.",
+ r_lif3_a:"At 5 nA: about 0.10, 1.08, 2.18 and 12.97 Hz; error grows with Δt. At 2 nA it is 0.01, 0.25, 0.54 and 0.54 Hz: for a single current the error jumps because each interval is rounded to a whole number of steps (with Δt = 0.5 and 1 ms the interval is the same, 16 ms). Look at the f-I curve: the maximum error over all currents is 0.10, 1.59, 8.26 and 12.97 Hz and, on average, it grows in proportion to Δt (Euler is first order, as in the article). Halving Δt halves the error but doubles the computation.",
+ r_lif4_q:"Maximum rate. What limit does the 2 ms refractory period impose? What is the rate at 5 nA?",
+ r_lif4_a:"It can never exceed 1/(2 ms) = 500 Hz. At 5 nA it fires at about 179 Hz (5.6 ms interval: 2 ms refractory and about 3.6 ms of integration). The integration time still outweighs the refractory period.",
+ r_izh1_q:"From regular to bursting. Starting from RS, change only c to −55 and d to 4. Then try c = −50 and d = 2. Which classes do you get?",
+ r_izh1_a:"c = −55, d = 4 is IB (initial burst then tonic; ISI < 10 ms ≈ 25%). c = −50, d = 2 is CH (repeated bursts; ≈ 86%). A higher reset and less slowing after each spike favour bursting.",
+ r_izh2_q:"Adaptation. In RS count the spikes with d = 8 and then with d = 2. What does d represent?",
+ r_izh2_a:"6 spikes with d = 8 and 14 with d = 2. d is the increase in the recovery variable u after each spike; it behaves like slow K⁺ currents that slow the cell down (adaptation).",
+ r_izh3_q:"FS versus RS. Which parameters change, and which cell type does FS represent? Why is its “ISI < 10 ms” 100% if it does not burst?",
+ r_izh3_a:"a (0.1 vs 0.02) and d (2 vs 8) change: u recovers fast and the cell does not adapt (31 spikes versus 6). It represents parvalbumin interneurons. The 100% reflects fast tonic firing (ISI about 7.6–7.8 ms), not bursts: a simple metric can confuse two patterns.",
+ r_izh4_q:"Threshold. In RS raise I from 2 in 0.5 steps. From which value does any spike appear?",
+ r_izh4_a:"At I = 3.5 the first spike appears (1 in 250 ms); at 4 there are 2 and at 4.5, 3. At 3 or below, v settles without firing.",
+ r_net1_q:"Weak versus strong inhibition. Simulate g = 2 and then g = 6. Compare the mean rate, the CV and the synchrony index.",
+ r_net1_a:"g = 2: about 60 Hz, CV ≈ 0.05 and synchrony ≈ 650 (volleys every ~17 ms; cells fire like clocks). g = 6: about 16 Hz, CV ≈ 0.36 and synchrony ≈ 7 (asynchronous activity). Inhibition lowers the rate and desynchronises.",
+ r_net2_q:"Sweep g. With 7 kHz input, simulate g = 1, 3, 4, 6 and 8. Where does the synchrony index change most?",
+ r_net2_a:"It falls from about 770 (g = 1) to 90 (g = 3), 14 (g = 4), 7 (g = 6) and 5 (g = 8): the steepest change is between g = 2 and g = 4.",
+ r_net3_q:"Interneuron loss. With g = 6, lower the inhibitory cells from 200 to 100 and then to 50. What happens to synchrony?",
+ r_net3_a:"About 7 with 200, 144 with 100 and 563 with 50: losing interneurons amounts to weakening inhibition, and the network becomes hypersynchronous, as in a seizure.",
+ /* UX: clinical cases (t title, v vignette, q question, i interpretation, l model limit) */
+ c_hyk_t:"Hyperkalaemia in chronic kidney disease",
+ c_hyk_v:"A 68-year-old man with chronic kidney disease, muscle weakness and a serum K⁺ of 7.5 mM.",
+ c_hyk_q:"At K⁺ 7.5 mM, is the cell more or less excitable than the control? Raise it to 12 mM: what changes and why?",
+ c_hyk_i:"At 7.5 mM the membrane depolarises and the cell fires on its own (about 70 Hz). At 12 mM it stays depolarised and silent: gate h keeps Na⁺ channels inactivated (depolarisation block). This is why severe hyperkalaemia causes weakness rather than spasm.",
+ c_hyk_l:"The model still fires at 7.5 mM and falls silent only from 8.5 mM, whereas the patient is already weak: squid parameters, fixed leak, no myelin or neuromuscular junction. Model concentrations are not clinical thresholds. Intravenous calcium, which stabilises the cardiac membrane, is not in the model: discuss it, do not simulate it.",
+ c_lido_t:"Local anaesthesia with lidocaine",
+ c_lido_v:"A 30-year-old woman receives infiltrated lidocaine before a hand wound is sutured. A few minutes later she no longer feels the needle.",
+ c_lido_q:"What happens to the spike train? Is stronger stimulation enough to bring it back?",
+ c_lido_i:"With 30% of Na⁺ channels blocked there is a single spike and the train does not return even at 30 µA/cm² (only 2 spikes): the pain signal is not transmitted repetitively. With total block (TTX) there is no action potential.",
+ c_lido_l:"The model reduces Na⁺ conductance uniformly; lidocaine binds mainly to open or inactivated channels (use-dependent block), which is not represented: that is why in the model it does not lengthen the refractory period (check it with the paired pulses of tab 5). An isopotential patch also cannot show conduction along the axon.",
+ c_4ap_t:"4-aminopyridine in multiple sclerosis",
+ c_4ap_v:"A 45-year-old woman with multiple sclerosis whose walking improves with 4-aminopyridine (fampridine). After an excessive dose she has a seizure.",
+ c_4ap_q:"How does action-potential width change with 20–30% K⁺ block? What happens at 40% with I = 0?",
+ c_4ap_i:"The action potential widens (from about 1.70 to 1.80 ms at 20% and 1.90 ms at 30%; measured at higher resolution in tab 5, 1.68 → 1.78 → 1.84 ms), which in a demyelinated axon helps the signal get through. At 40% rest becomes unstable and the cell fires on its own: more excitability, consistent with seizures after overdose.",
+ c_4ap_l:"4-AP acts mainly on Kv1 channels exposed in demyelinated axons; here only the delayed-rectifier K⁺ conductance is reduced. The model has no myelin and no conduction.",
+ c_ttx_t:"Puffer fish poisoning (tetrodotoxin)",
+ c_ttx_v:"A 50-year-old man develops perioral paraesthesia and progressive weakness after eating puffer fish.",
+ c_ttx_q:"With total Na⁺ block, is there an action potential even if you raise I to 30? Also try intermediate blocks (50–90%).",
+ c_ttx_i:"No: there is only passive depolarisation, proportional to the current. Without Na⁺ current there is no upstroke, which is why tetrodotoxin blocks nerve conduction and can cause respiratory paralysis.",
+ c_ttx_l:"Real poisoning is partial and progressive with dose; the model's intermediate blocks help reason about that gradation, not estimate doses.",
+ c_hypok_t:"Hypokalaemia",
+ c_hypok_v:"A 25-year-old man with repeated vomiting, generalised weakness and a serum K⁺ of 2.5 mM.",
+ c_hypok_q:"Compare with the control (K⁺ 4 mM, same I = 8). What happens to E_K, to rest and to the number of spikes?",
+ c_hypok_i:"E_K falls to about −89.5 mV and rest to about −68 mV: the cell hyperpolarises and at I = 8 gives a single spike (7 in the control). Less excitability, consistent with weakness.",
+ c_hypok_l:"In human muscle the relation is more complex (in hypokalaemic periodic paralysis the fibre can even depolarise). Use it as a basic mechanism, not as a model of the disease.",
+ c_drav_t:"Dravet syndrome",
+ c_drav_v:"An 8-month-old infant with prolonged fever-triggered seizures; genetic testing shows a loss-of-function variant in SCN1A.",
+ c_drav_q:"SCN1A encodes Na⁺ channels that are abundant in inhibitory interneurons. If interneurons fire less, what do you expect in the network? Compare with the control network (g = 6, 200 inhibitory cells).",
+ c_drav_i:"Reducing effective inhibition takes the network from asynchronous activity (synchrony ≈ 7) to hypersynchronous volleys (≈ 563): a mutation that reduces the excitability of some cells increases the excitability of the circuit.",
+ c_drav_l:"Here this is simulated by removing interneurons, not by reducing their Na⁺ current; the network has no fever, thermoregulation or cortical geometry. Hypersynchrony is a computational picture, not an EEG.",
+ /* UX: glossary [term, definition] */
+ gloss:[["Model","A set of rules a computer follows to imitate a cell. This one uses squid-axon parameters: use it to reason about mechanisms; it gives no clinical thresholds or doses."],
+  ["Membrane potential","Voltage difference between the inside and the outside of the cell, in mV. At rest it is negative (about −65 mV in the model)."],
+  ["Action potential (spike)","A fast rise and fall of voltage (about 2 ms) that carries the signal. “Firing” means producing action potentials."],
+  ["Threshold","The voltage or current from which a spike is produced."],
+  ["Rheobase","The smallest constant current that, held long enough, eventually produces spikes. It underlies the strength-duration curves of nerve excitability testing and neurostimulator programming."],
+  ["Gates m, h and n","Parts of the channels that open or close with voltage (fraction from 0 to 1). m opens the Na⁺ channel fast; h closes it more slowly (inactivation); n opens the K⁺ channel."],
+  ["Na⁺ inactivation","Closure of the Na⁺ channel by gate h while the membrane stays depolarised. It prevents immediate re-firing (refractory period)."],
+  ["Depolarisation block","Silence of a cell that is kept depolarised, because its Na⁺ channels remain inactivated (for example, in severe hyperkalaemia)."],
+  ["E_K (Nernst equation)","The voltage at which K⁺ stops flowing: E_K = −77 + 26.7·ln([K⁺]ₒ/4) mV. If extracellular K⁺ rises, E_K becomes less negative and the cell depolarises."],
+  ["f-I curve","A plot of firing rate against injected current."],
+  ["Type I and type II excitability","Type I: the rate starts at 0 and grows continuously (integrate-and-fire). Type II: the rate jumps from 0 to a high value (Hodgkin-Huxley)."],
+  ["ISI and CV","ISI: interval between two consecutive spikes. CV: standard deviation divided by the mean of the ISIs; near 0, clock-like; near 1, irregular."],
+  ["Adaptation","Progressive lengthening of inter-spike intervals during a constant stimulus."],
+  ["Burst","A group of closely spaced spikes (ISIs of a few ms) separated from the next group by a pause."],
+  ["FS interneuron","A fast-spiking inhibitory neuron (parvalbumin-positive) that fires at high rates without adapting."],
+  ["Raster","A plot with one dot per spike: time on the x axis and cell number on the y axis."],
+  ["Synchrony index","Variance divided by the mean of the population spike count in each millisecond. Near 1 if cells fire independently; hundreds if they fire together."],
+  ["Refractory period","Time after a spike during which another spike is impossible (absolute) or needs more current (relative), because of Na⁺ inactivation and still-open K⁺ channels."],
+  ["Voltage clamp","An experiment that holds membrane voltage fixed and measures the current needed to keep it there; this separates the Na⁺ and K⁺ currents."],
+  ["Q10","The factor by which a process speeds up when temperature rises by 10 °C. In the model, Q10 = 3 for every gate."],
+  ["Training, test and overfitting","A classifier learns from one group of cells (training) and is evaluated on others it has not seen (test). If it improves on training but not on test, it is overfitting."],
+  ["Δt and Euler's method","The simulator advances in time steps Δt with the rule “new value = current value + Δt × rate of change”. Smaller steps are more accurate but need more computation."]],
+ /* GRAF: plot UI texts (EN) */
+ g_png:"PNG",g_csv:"CSV",g_ghost:"Compare",
+ g_png_t:"Download this plot as a PNG image",g_csv_t:"Download the data shown in this plot (CSV)",
+ g_ghost_t:"Overlay the previous run in grey to compare when you change a parameter",
+ g_prev:"Previous",g_cur:"Current",g_stim:"stimulus",g_thr:"threshold",g_open:"Open fraction",g_cell:"Neuron (index)",
+ g_rate:"Firing rate (Hz)",g_exc:"Excitatory",g_inh:"Inhibitory",g_cellw:"Cell",g_series:"series",
+ g_hint:"Plot. Hover, tap or use the arrow keys to read values.",g_none:"no spikes nearby",
+ /* DATOS: new texts (EN) */
+ tab_pro:"HH protocols",tab_cls:"Classifier",
+ temp:"Temperature (°C; Q10 = 3)",caout:"Extracellular Ca²⁺ (× normal)",
+ p_hypoca:"Hypocalcaemia (Ca²⁺ × 0.4)",p_hyperca:"Hypercalcaemia (Ca²⁺ × 2)",p_heat:"Warming to 26 °C",
+ qual:"qualitative",
+ nt_hypoca:"With little extracellular Ca²⁺ the screening of surface charges is lost: gates open at more negative potentials (here, an 18 mV shift per decade). Threshold falls and, with very low Ca²⁺, the cell fires on its own: the mechanism of tetany and of Chvostek's and Trousseau's signs. Qualitative.",
+ nt_lowca:"Mildly low Ca²⁺: gates shift towards negative potentials and less current is needed to fire (hyperexcitability). Qualitative.",
+ nt_hica:"With high Ca²⁺ gates shift towards positive potentials: threshold rises and the cell is less excitable, as in the weakness and hyporeflexia of hypercalcaemia. Qualitative.",
+ nt_heat:"Warming speeds up every gate (Q10 = 3). K⁺ activation and Na⁺ inactivation arrive before Na⁺ has finished depolarising: the action potential shrinks and narrows. In this model, above about 21 °C there is no repetitive firing at 10 µA/cm², and near 28 °C not even a brief pulse evokes a spike (heat block; Hodgkin and Katz, 1949). It helps to reason about Uhthoff's phenomenon, although human axons work at 37 °C with other channels. Qualitative.",
+ nt_warm:"Higher temperature speeds up the gates: narrower spikes and higher rates. Go up to 26 °C to see heat block. Qualitative.",
+ nth:"Firing threshold (mV)",n_aed:"Antiseizure drug (threshold +2 mV) with interneuron loss",
+ nt_aed:"Raising the threshold is a qualitative abstraction of a Na⁺ channel blocker (phenytoin, carbamazepine): more depolarisation is needed to fire. Note that the rate falls sharply but synchrony can stay high when inhibition is missing; a few mV more and the network goes silent (a dose effect). Not a real dose.",
+ pro_t:"Laboratory protocols",pro_l:"Classic experiments on the Hodgkin-Huxley model. They use the conditions (blocks, K⁺, temperature, Ca²⁺) set in tab 1.",
+ pro_sel:"Protocol",pr_vc:"Voltage clamp",pr_pp:"Paired pulses (refractory period)",pr_fi:"Frequency-current curve",pr_kw:"Spike width vs K⁺ block",pr_cost:"Computational cost",
+ vc_lab:"Command voltage (mV)",pp_int:"Interval between pulses (ms)",pp_amp:"2nd pulse (× single-pulse threshold)",pro_run:"Compute",calc:"Computing…",
+ cond:"Conditions from tab 1",ctrl:"Control",curc:"Current condition",
+ vc_c1:"Currents during a step from −65 mV (convention: inward is negative)",vc_c2:"Current-voltage curve: peak I_Na and I_K at the end of the step",
+ vc_note:"This is how Hodgkin and Huxley (1952) separated the two currents: voltage is held and current is measured. I_Na is fast, inward and inactivates; I_K is slow, outward and sustained. I_Na reverses near +50 mV (E_Na). Try TTX or 4-AP in tab 1 and come back: each drug removes one current.",
+ ina_pk:"Peak I_Na",ik_ss:"Final I_K",
+ pp_c1:"Membrane potential with two 1 ms pulses (ochre bars below the trace)",pp_c2:"Current needed for a 2nd spike, relative to the single-pulse threshold (1st pulse = 2× threshold; no spike up to 15× = absolute refractory; dot = your 2nd pulse)",
+ pp_note:"After a spike, Na⁺ inactivation (low h) and still-open K⁺ channels prevent another spike: first absolutely, then relatively (more current is needed). The refractory period limits the maximum firing rate; raise the temperature in tab 1 and it shortens. Near 20 ms the threshold dips below 1× (supernormal phase). Model limit: scaling g_Na does not reproduce the use-dependent block of lidocaine, which in vivo slows recovery from inactivation and lengthens refractoriness.",
+ thr1:"Single-pulse threshold",arp:"Absolute refractory",rrp:"Relative refractory (threshold > 1.1×)",spk2:"2nd spike",yes:"yes",no:"no",
+ fi_c1:"Sustained rate (Hz; spikes between 100 and 400 ms) for currents from 0 to 30 µA/cm²",
+ fi_note:"The jump from 0 to about 50 Hz is the signature of type II excitability. With Na⁺ block the onset moves right (7 → 10 → 14 µA/cm² with 0, 10 and 20% block; no repetitive firing with 30%), as in the article (Fig. 7A). The grid is 1 µA/cm²: with 0.25 steps, tab 1 places the control onset between 6.0 and 6.25 µA/cm².",
+ onset:"Onset of repetitive firing",none:"none ≤ 30",
+ kw_c1:"Width at −20 mV of the action potential after a 1 ms, 20 µA/cm² pulse (settled cell)",kw_c2:"Action potential with 0, 20 and 30% K⁺ block",
+ kw_note:"Less K⁺ current delays repolarisation: the spike widens (1.68 → 1.78 → 1.84 ms with 0, 20 and 30%, as in the article, Fig. 7B). A wider spike releases more transmitter and conducts better in a demyelinated axon: the basis for using 4-aminopyridine in multiple sclerosis.",
+ cost_c1:"Compute time for 1 s of biological time of one cell in your browser (recording every step, as in the article)",
+ cost_note:"Cost has two sources: the number of steps (Hodgkin-Huxley needs Δt = 0.01 ms because of its fast Na⁺: 100,000 steps per second, versus 10,000 for LIF and 4,000 for Izhikevich) and the cost of each step (4 variables with exponentials versus 1 or 2). The article measured about 100× (HH/LIF) and 600–800× (HH/Izhikevich) in Python; in compiled JavaScript the ratios change, but the order is the same.",
+ model:"Model",steps:"Steps per s",mspers:"ms per simulated s",usstep:"µs per step",ratio:"Ratio HH/model",paper:"Article (Python)",
+ cls_t:"From neurons to an artificial neural network",cls_l:"Heterogeneous, noisy Izhikevich cells are simulated, 5 spike-train features are extracted, and a logistic regression and a 5-16-16-5 multilayer perceptron (453 parameters) are trained in your browser. Stratified 70/30 split.",
+ cls_n:"Cells per class",cls_noise:"Input noise σ",cls_jit:"Parameter variability (%)",cls_feat:"Features",cls_f5:"All 5 features",cls_f2:"Only 2 (bursts and CV)",cls_seed:"Seed",cls_run:"Simulate and train",
+ cls_c1:"Features of all cells: burst fraction versus CV of ISIs (colour = true class)",cls_c2:"Loss (cross-entropy) per epoch: MLP on training (solid) and test (dotted); logistic regression (LR) on test",
+ acc_mlp:"MLP accuracy",acc_lr:"Logistic regression accuracy",nparams:"Parameters",ttime:"Time",cm_mlp:"Confusion matrix, MLP (rows: true class; columns: predicted)",cm_lr:"Confusion matrix, logistic regression",
+ train:"Training",test:"Test",epoch:"Epoch",fburst:"Burst fraction",fcv:"CV of ISIs",
+ cls_note:"With the default settings (120 cells per class, σ = 2, 10%) the article obtained 95.5% (MLP) and 94.7% (logistic regression) over 10 splits, and 97.2% and 96.3% on 600 new cells: with well-chosen physiological features, a linear model nearly matches the network. IB is usually the hardest class. Raise the noise or use only 2 features and see where errors appear. Numbers change somewhat with the seed.",
+ nt_spont:"Under these conditions the cell fires on its own, so the paired-pulse protocol is meaningless. Go back to Control in tab 1 (or reduce the change) and try again.",nt_spont_s:"Spontaneous firing (excluded)"
+ ,
+ /* v2: new keys */
+ doc_title:"NeuroSim-Edu · Simulator",
+ ux_osc:"oscillates",
+ ux_stale_cls:"You changed parameters: press “Simulate and train” to see their effect.",
+ obs_pro:["The protocols use the conditions of tab 1 (blocks, K⁺, temperature and Ca²⁺): change them there and come back.", "In voltage clamp, I_Na is fast, inward and transient; I_K is slow, outward and sustained.", "In paired pulses, the dot of the 2nd pulse is teal if there was a 2nd spike and wine if there was not."],
+ obs_cls:["Each dot in the first plot is a simulated cell: classes that overlap in bursts and CV are the ones most often confused.", "If the test loss stops falling while the training loss keeps falling, the model is starting to overfit.", "In the confusion matrices the diagonal is the correct answers; off the diagonal, which class was taken for which."],
+ r_hh6_q:"Temperature (qualitative extension). With I = 10 µA/cm², raise the temperature from 6.3 to 10.3, 15.3 and 20.3 °C and note the rate and the width. Then try 22 and 26 °C.",
+ r_hh6_a:"The rate rises (about 68, 99, 151 and 208 Hz) and the spike narrows (from 1.70 to about 0.40 ms): every gate speeds up (Q10 = 3). Above about 21 °C the train is lost (1 spike at 22 °C and none at 26 °C): K⁺ activation and Na⁺ inactivation arrive before Na⁺ has finished depolarising (heat block). A brief pulse (1 ms, 20 µA/cm²) still evokes a spike at 26 °C, but no longer at 28 °C.",
+ c_hypoca_t:"Hypocalcaemia after thyroidectomy",
+ c_hypoca_v:"A 40-year-old woman, two days after a total thyroidectomy, has perioral tingling, hand cramps and a positive Trousseau sign. Ionised calcium is low.",
+ c_hypoca_q:"With Ca²⁺ × 0.4 and I = 0, is the cell at rest? Raise Ca²⁺ step by step: from which value does it stop firing on its own? Then compare Ca²⁺ × 2 with the control, both with I = 8.",
+ c_hypoca_i:"With Ca²⁺ × 0.4 the cell fires on its own, without a stimulus (about 52 Hz); from × 0.45 it returns to rest. With little Ca²⁺ the gates open at more negative potentials and threshold falls: hyperexcitability, as in tetany. With Ca²⁺ × 2 and I = 8 there is a single spike (7 in the control): hypoexcitability, as in hypercalcaemia.",
+ c_hypoca_l:"The effect of Ca²⁺ is modelled only as an 18 mV-per-decade shift of the gates (screening of surface charges); direct Na⁺ channel block by Ca²⁺, the neuromuscular junction and transmitter release are left out. It is a qualitative extension: multiples of the normal value are not clinical concentrations.",
+ c_aed_t:"Na⁺-channel-blocking antiseizure drug",
+ c_aed_v:"A 32-year-old woman with focal epilepsy starts treatment with carbamazepine, a Na⁺ channel blocker.",
+ c_aed_q:"In the network with 50 interneurons (hypersynchronous), raise the firing threshold from −50 to −49, −48 and −47 mV. What happens to the mean rate and to synchrony?",
+ c_aed_i:"At −49 mV: about 34 Hz and synchrony ≈ 575; at −48 mV (+2 mV): about 21 Hz, but synchrony stays high (≈ 392); at −47 mV the network almost goes silent (0.6 Hz). The drug reduces excitability but does not restore the lost inhibition: the rate falls well before synchrony does, and a little more effect silences the network (a dose effect).",
+ c_aed_l:"Raising the threshold is an abstraction: Na⁺ blockers act in a use- and voltage-dependent way and also affect interneurons. In Dravet syndrome they are contraindicated because they worsen interneuron function, which this model cannot show. The mV are not doses.",
+ r_pro1_q:"Voltage clamp. With the command at 0 mV, read the peak I_Na and the final I_K. Then move the command until peak I_Na changes sign. Finally apply TTX (Na⁺ −100%) or 4-AP (K⁺ −40%) in tab 1 and come back.",
+ r_pro1_a:"At 0 mV, peak I_Na is about −1.46 mA/cm² (inward) and final I_K about 1.88 mA/cm² (outward). I_Na is zero at +50 mV (E_Na) and becomes positive above it. With TTX I_Na disappears; with 40% 4-AP final I_K falls to about 1.13 mA/cm².",
+ r_pro2_q:"Refractory period. In paired pulses (control), from which interval can there be a 2nd spike? At about which interval is a 2nd pulse equal to threshold enough? Repeat at 16.3 °C in tab 1.",
+ r_pro2_a:"The single-pulse threshold is 6.91 µA/cm². Up to 6 ms there is no 2nd spike even at 15 times threshold (absolute refractory ≈ 6–7 ms); at 7 ms about 11 times is needed, at 10 ms about 3.8 and at 15 ms about 1.2. Near 20 ms 0.85 times threshold is enough (supernormal phase). At 16.3 °C the absolute refractory period shortens to ≈ 2–2.5 ms because the gates recover sooner.",
+ r_pro3_q:"f-I curve and Na⁺ block. With 20% Na⁺ block (already applied), where does repetitive firing start compared with the control? Also try 10 and 30% in tab 1.",
+ r_pro3_a:"Control: 7 µA/cm²; 10%: 10; 20%: 14; 30%: none up to 30 µA/cm², as in Figure 7A of the article. Fewer Na⁺ channels shift the onset to the right in a dose-dependent way.",
+ r_cls1_q:"Baseline. With the default settings (120 cells per class, σ = 2, 10%, 5 features, seed 0), what accuracy do the network (MLP) and the logistic regression reach? Which class is confused most?",
+ r_cls1_a:"MLP ≈ 95.0% and logistic regression ≈ 93.9%, with 453 versus 30 parameters: with well-chosen physiological features, a linear model nearly matches the network. IB is the class with most errors (31 of 36 correctly classified by the MLP). With another seed the numbers change a little (seed 1: 96.1% and 96.7%).",
+ r_cls2_q:"Fewer features. Switch to “Only 2 (bursts and CV)” and train. How much does accuracy drop, and in which classes do errors appear?",
+ r_cls2_a:"MLP ≈ 91.7% and logistic regression ≈ 88.3%. Without rate, adaptation or latency, FS and LTS gather the errors (30 of 36 each), confused mainly with IB and with each other. Feature quality matters more than model complexity."
+
+}};
+const lang="en"; /* single-language build */
+
+const T=k=>TX[lang][k]??k;
+/* UX + GRAF: es-ES locale (decimal comma, as in the Spanish texts) */
+const nf=(x,d=1)=>Number(x).toLocaleString(lang==="es"?"es-ES":"en-GB",{minimumFractionDigits:d,maximumFractionDigits:d}).replace("-","\u2212"); /* integration: true minus sign, as in the texts and the plot ticks */
+
+// ---------------------------------------------------------------- plotting
+/* GRAF: plotting layer rewritten (replaces the original plot()). Same call signature plus optional keys:
+   ghost:true is implied by data-ghost on the canvas; yu/xu = units for the readout; fill = area under a series;
+   direct = right-edge labels for labelled series; legend = extra legend entries [{lab,col,kind:"line"|"dot"|"tick",dash}];
+   hlines accept numbers or {y,lab}; raster accepts [[x,y,col],...] (drawn grouped by colour for speed).
+   Every canvas keeps its last drawing in cv._pd for the hover readout, PNG and CSV export. */
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+const GH={};                                   // GRAF: ghost store per canvas id {cur,base,on}
+function tickStep(a,b,n){const raw=(b-a)/Math.max(1,n),st=Math.pow(10,Math.floor(Math.log10(raw)));return [1,2,2.5,5,10].find(k=>k*st>=raw*0.999)*st}
+function ticksOf(a,b,n){const m=tickStep(a,b,n),out=[];for(let k=Math.ceil(a/m-1e-9);k*m<=b+m*1e-6;k++)out.push(+(k*m).toFixed(9));
+  let d=0;while(d<6&&Math.abs(Math.round(m*10**d)-m*10**d)>1e-6)d++;return{t:out,d}}
+// GRAF: tick/readout number format — locale decimal mark, no thousands grouping, true minus sign
+function tf(v,d){return Number(v).toLocaleString(lang==="es"?"es-ES":"en-GB",{minimumFractionDigits:d,maximumFractionDigits:d,useGrouping:false}).replace("-","−")}
+function decFor(span){return span>=50?0:span>=5?1:span>=0.5?2:3}
+function plot(cv,o){
+  const {series=[],xr,yr,xl="",yl="",hlines=[],bars=[],points=[],raster=null,fill=false,direct=false,legend=[]}=o;
+  const dpr=o._dpr||window.devicePixelRatio||1, W=cv.clientWidth||cv.parentNode.clientWidth||600, H=+cv.getAttribute("height");
+  cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); cv.style.height=H+"px";
+  const c=cv.getContext("2d"); c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,W,H);
+  const fg=css("--fg"),mu=css("--muted"),gr=css("--grid"),ax=css("--axis"),pan=css("--panel"),body=css("--f-body")||"system-ui,sans-serif";
+  const small=W<480, FS=small?11:12; c.font=FS+"px "+body; c.lineCap="round"; c.lineJoin="round";
+  // ghost (previous run) bookkeeping
+  let ghost=null;
+  if(cv.dataset.ghost&&!o._export){const g=GH[cv.id]||(GH[cv.id]={cur:null,base:null,on:true});g.cur=series.map(s=>({x:s.x,y:s.y}));if(g.on&&g.base)ghost=g.base}
+  else if(o._export&&cv._pd)ghost=cv._pd.ghost;
+  // legend entries
+  const leg=[];
+  if(ghost){series.forEach((s,i)=>{if(i===0||s.lab)leg.push({lab:s.lab||T("g_cur"),col:s.col,dash:s.dash,kind:"line"})});leg.push({lab:T("g_prev"),col:css("--ghost"),dash:[4,3],kind:"line"})}
+  else series.forEach(s=>{if(s.lab)leg.push({lab:s.lab,col:s.col,dash:s.dash,kind:"line"})});
+  points.forEach(p=>{if(p.lab)leg.push({lab:p.lab,col:p.col,kind:"dot"})});
+  legend.forEach(e=>leg.push(e));
+  // y ticks first, to size the left margin from the widest label
+  const yt=ticksOf(yr[0],yr[1],5), ytl=yt.t.map(t=>tf(t,yt.d));
+  const L=Math.ceil(Math.max(...ytl.map(s=>c.measureText(s).width)))+(yl?26:10);
+  let R=12;
+  if(direct){const w=Math.max(0,...series.filter(s=>s.lab).map(s=>c.measureText(s.lab).width));R=Math.max(R,w+14)}
+  // legend rows (wrap at narrow widths), right aligned in a strip above the plot area: never over the data
+  const sw=18,gap=14,rows=[[]];let rw=0;const avail=W-L-R;
+  for(const e of leg){const w=sw+6+c.measureText(e.lab).width;if(rows[rows.length-1].length&&rw+gap+w>avail){rows.push([]);rw=0}rows[rows.length-1].push({...e,w});rw+=(rw?gap:0)+w}
+  const legH=leg.length?rows.length*16+4:0;
+  const Tp=8+legH, stimH=bars.length?12:0, B=(xl?36:22)+stimH, pw=Math.max(10,W-L-R), ph=Math.max(10,H-Tp-B);
+  const X=x=>L+(x-xr[0])/(xr[1]-xr[0])*pw, Y=y=>Tp+ph-(y-yr[0])/(yr[1]-yr[0])*ph;
+  // grid (horizontal only, recessive) + y ticks
+  c.lineWidth=1; c.fillStyle=mu; c.textBaseline="middle"; c.textAlign="right";
+  yt.t.forEach((t,i)=>{const y=Math.round(Y(t))+.5;c.strokeStyle=gr;c.beginPath();c.moveTo(L,y);c.lineTo(L+pw,y);c.stroke();
+    c.strokeStyle=ax;c.beginPath();c.moveTo(L-4,y);c.lineTo(L,y);c.stroke();c.fillText(ytl[i],L-7,y)});
+  // x ticks (count adapts to width)
+  const xt=ticksOf(xr[0],xr[1],Math.max(3,Math.min(8,Math.round(pw/(small?60:85)))));
+  c.textAlign="center"; c.textBaseline="top";
+  for(const t of xt.t){const x=Math.round(X(t))+.5;c.strokeStyle=ax;c.beginPath();c.moveTo(x,Tp+ph);c.lineTo(x,Tp+ph+4);c.stroke();c.fillText(tf(t,xt.d),x,Tp+ph+6+stimH)}
+  // axis spines (left + bottom, like the article figures)
+  c.strokeStyle=ax; c.beginPath(); c.moveTo(L+.5,Tp); c.lineTo(L+.5,Tp+ph+.5); c.lineTo(L+pw,Tp+ph+.5); c.stroke();
+  // axis titles
+  c.fillStyle=mu; c.textBaseline="alphabetic"; c.textAlign="center"; if(xl)c.fillText(xl,L+pw/2,H-4);
+  if(yl){c.save();c.translate(FS+1,Tp+ph/2);c.rotate(-Math.PI/2);c.fillText(yl,0,0);c.restore()}
+  // stimulus bar: own lane between plot area and x axis, never on top of the trace
+  for(const b of bars){const x0=X(Math.max(b[0],xr[0])),x1=X(Math.min(b[1],xr[1]));c.fillStyle=css("--stim");c.fillRect(x0,Tp+ph+3,Math.max(2,x1-x0),6);
+    c.fillStyle=mu;c.textBaseline="middle";const lab=T("g_stim"),lw=c.measureText(lab).width;
+    if(x1+6+lw<L+pw){c.textAlign="left";c.fillText(lab,x1+6,Tp+ph+6.5)}else if(x0-6-lw>L){c.textAlign="right";c.fillText(lab,x0-6,Tp+ph+6.5)}}
+  // reference lines with optional right-end label
+  for(const h0 of hlines){const h=typeof h0==="number"?{y:h0}:h0;if(h.y<yr[0]||h.y>yr[1])continue;const y=Math.round(Y(h.y))+.5;
+    c.strokeStyle=mu;c.setLineDash([3,3]);c.beginPath();c.moveTo(L,y);c.lineTo(L+pw,y);c.stroke();c.setLineDash([]);
+    if(h.lab){const lw=c.measureText(h.lab).width;c.globalAlpha=.85;c.fillStyle=pan;c.fillRect(L+pw-lw-6,y-FS-4,lw+6,FS+3);c.globalAlpha=1;
+      c.fillStyle=mu;c.textAlign="right";c.textBaseline="bottom";c.fillText(h.lab,L+pw-3,y-2)}}
+  c.save(); c.beginPath(); c.rect(L,Tp-2,pw,ph+4); c.clip();
+  // raster: grouped by colour, short vertical ticks (fast: one fillStyle per population)
+  if(raster){const grp=new Map();for(const r of raster){let a=grp.get(r[2]);if(!a)grp.set(r[2],a=[]);a.push(r[0],r[1])}
+    const th=Math.max(1.6,Math.min(3.2,ph/((yr[1]-yr[0])/4)*0.9)),tw=small?1.2:1.4;
+    for(const [col,a] of grp){c.fillStyle=col;for(let i=0;i<a.length;i+=2)c.fillRect(X(a[i])-tw/2,Y(a[i+1])-th/2,tw,th)}}
+  // polyline with min/max decimation per pixel column: keeps every spike peak, cost ~O(n)
+  const path=(xs,ys)=>{const n=xs.length;c.beginPath();if(n<=pw*3){let pen=false;for(let i=0;i<n;i++){const y=ys[i];if(!isFinite(y)){pen=false;continue}
+      const px=X(xs[i]),py=Y(Math.max(yr[0]-50,Math.min(yr[1]+50,y)));pen?c.lineTo(px,py):c.moveTo(px,py);pen=true}return}
+    let col=-1,mn=0,mx=0,first=true,iMn=0,iMx=0;
+    const flush=()=>{if(col<0)return;const a=iMn<iMx?[mn,mx]:[mx,mn];for(const v of a){const py=Y(Math.max(yr[0]-50,Math.min(yr[1]+50,v)));first?c.moveTo(col,py):c.lineTo(col,py);first=false}};
+    for(let i=0;i<n;i++){const y=ys[i];if(!isFinite(y))continue;const px=Math.round(X(xs[i]));if(px!==col){flush();col=px;mn=mx=y;iMn=iMx=i}else{if(y<mn){mn=y;iMn=i}if(y>mx){mx=y;iMx=i}}}flush()};
+  if(ghost){c.strokeStyle=css("--ghost");c.lineWidth=1.4;c.setLineDash([4,3]);for(const s of ghost.slice(0,1)){path(s.x,s.y);c.stroke()}c.setLineDash([])}
+  for(const s of series){
+    if(fill){path(s.x,s.y);c.lineTo(X(s.x[s.x.length-1]),Y(yr[0]));c.lineTo(X(s.x[0]),Y(yr[0]));c.closePath();c.globalAlpha=.16;c.fillStyle=s.col;c.fill();c.globalAlpha=1}
+    c.strokeStyle=s.col;c.lineWidth=s.w||1.6;c.setLineDash(s.dash||[]);path(s.x,s.y);c.stroke();c.setLineDash([])}
+  for(const p of points){for(let i=0;i<p.x.length;i++){if(!isFinite(p.y[i]))continue;c.beginPath();c.arc(X(p.x[i]),Y(p.y[i]),4,0,7);
+    c.fillStyle=p.col;c.fill();c.lineWidth=1.5;c.strokeStyle=pan;c.stroke()}}
+  c.restore();
+  // direct labels at the right end of each labelled series (simple de-collision, min 13 px apart)
+  if(direct){const ds=series.filter(s=>s.lab).map(s=>{let i=s.y.length-1;while(i>0&&!isFinite(s.y[i]))i--;return{s,y:Y(Math.max(yr[0],Math.min(yr[1],s.y[i])))}}).sort((a,b)=>a.y-b.y);
+    for(let i=1;i<ds.length;i++)if(ds[i].y-ds[i-1].y<13)ds[i].y=ds[i-1].y+13;
+    const over=ds.length?ds[ds.length-1].y-(Tp+ph):0;if(over>0)ds.forEach(d=>d.y-=over);
+    c.font="600 "+FS+"px "+body;c.textAlign="left";c.textBaseline="middle";for(const d of ds){c.fillStyle=fg;c.fillText(d.s.lab,L+pw+6,d.y)}c.font=FS+"px "+body}
+  // legend: swatch carries colour + dash/marker (identity never colour-only); text in ink, not series colour
+  c.textBaseline="middle";c.textAlign="left";
+  rows.forEach((row,ri)=>{const tot=row.reduce((a,e)=>a+e.w,0)+gap*(row.length-1);let x=L+pw-tot;const y=6+ri*16+6;
+    for(const e of row){c.strokeStyle=c.fillStyle=e.col;
+      if(e.kind==="dot"){c.beginPath();c.arc(x+sw/2,y,4,0,7);c.fill()}
+      else if(e.kind==="tick"){c.fillRect(x+sw/2-1,y-5,2.2,10);c.fillRect(x+sw/2-6,y-5,2.2,10);c.fillRect(x+sw/2+4,y-5,2.2,10)}
+      else{c.lineWidth=2;c.setLineDash(e.dash||[]);c.beginPath();c.moveTo(x,y);c.lineTo(x+sw,y);c.stroke();c.setLineDash([])}
+      c.fillStyle=fg;c.fillText(e.lab,x+sw+6,y+.5);x+=e.w+gap}});
+  if(!o._export){cv._pd={o,ghost,xr,yr,L,Tp,pw,ph,W,H,X,Y};if(cv._hov)grafHover(cv,cv._hov.x)}
+}
+const chips=(el,arr)=>{el.innerHTML=arr.map(([k,v])=>`<span class="chip">${k}: <b>${v}</b></span>`).join("")};
+
+/* GRAF: interaction layer — crosshair + readout, keyboard access, PNG/CSV export, ghost toggle */
+function bsearch(xs,x){let lo=0,hi=xs.length-1;if(hi<0)return -1;while(hi-lo>1){const m=(lo+hi)>>1;xs[m]<x?lo=m:hi=m}return Math.abs(xs[lo]-x)<=Math.abs(xs[hi]-x)?lo:hi}
+function grafHover(cv,px){
+  const d=cv._pd,box=cv.parentNode,ov=box.querySelector("canvas.ov"),tip=box.querySelector(".ptip");if(!d||!ov)return;
+  const dpr=window.devicePixelRatio||1;ov.width=Math.round(d.W*dpr);ov.height=Math.round(d.H*dpr);ov.style.width=d.W+"px";ov.style.height=d.H+"px";
+  const c=ov.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,d.W,d.H);
+  if(px==null||px<d.L||px>d.L+d.pw){tip.hidden=true;cv._hov=null;return}
+  cv._hov={x:px};
+  const o=d.o,xv=d.xr[0]+(px-d.L)/d.pw*(d.xr[1]-d.xr[0]),xd=decFor(d.xr[1]-d.xr[0])+1,yd=decFor(d.yr[1]-d.yr[0])+1;
+  const xu=o.xu||"",yu=o.yu||"",lines=[],dots=[];
+  let xs=tf(xv,xd);
+  if(o.raster){let best=null,bd=36;const yAt=y=>d.Y(y);
+    // nearest spike within 6 px (linear scan of the plotted ~10^4 points: fine on pointermove)
+    for(const r of o.raster){const dx=d.X(r[0])-px;if(dx>6||dx<-6)continue;const dy=cv._hy!=null?yAt(r[1])-cv._hy:0,dd=dx*dx+dy*dy;if(dd<bd){bd=dd;best=r}}
+    if(best){xs=tf(best[0],1);dots.push([d.X(best[0]),d.Y(best[1]),best[2]]);lines.push([best[2],`${T("g_cellw")} #${best[1]} · ${best[1]<o.nE?T("g_exc"):T("g_inh")}`])}
+    else lines.push([null,T("g_none")])}
+  const all=[...(o.series||[]).map((s,i)=>({s,lab:s.lab||(o.series.length>1?T("g_series")+" "+(i+1):o.ylab||""),col:s.col}))];
+  if(d.ghost)all.push({s:d.ghost[0],lab:T("g_prev"),col:css("--ghost")});
+  for(const e of all){const i=bsearch(e.s.x,xv);if(i<0)continue;const y=e.s.y[i];if(!isFinite(y))continue;
+    dots.push([d.X(e.s.x[i]),d.Y(Math.max(d.yr[0],Math.min(d.yr[1],y))),e.col]);lines.push([e.col,`${e.lab?e.lab+": ":""}<b>${tf(y,o.yd??yd)}</b>${yu?" "+yu:""}`])}
+  /* Integration: nearest point by a linear 2-D scan (points may be unsorted, e.g. the classifier scatter) */
+  if(o.scatter){let best=null,bd=144;for(const p of (o.points||[]))for(let i=0;i<p.x.length;i++){if(!isFinite(p.y[i]))continue;const dx=d.X(p.x[i])-px,dy=cv._hy!=null?d.Y(p.y[i])-cv._hy:0,dd=dx*dx+dy*dy;if(dd<bd){bd=dd;best=[p,i]}}
+    if(best){const [p,i]=best;xs=tf(p.x[i],2);dots.push([d.X(p.x[i]),d.Y(p.y[i]),p.col]);lines.push([p.col,`${p.lab}: ${esc(o.yl||"y")} <b>${tf(p.y[i],o.yd??yd)}</b>`])}else lines.push([null,T("g_none")])}
+  else for(const p of (o.points||[])){let i=-1,bd=11;for(let j=0;j<p.x.length;j++){const dx=Math.abs(d.X(p.x[j])-px);if(dx<bd&&isFinite(p.y[j])){bd=dx;i=j}}if(i<0)continue;
+    dots.push([d.X(p.x[i]),d.Y(p.y[i]),p.col]);lines.push([p.col,`${p.lab?p.lab+": ":""}<b>${tf(p.y[i],o.yd??yd)}</b>${yu?" "+yu:""} @ ${tf(p.x[i],2)}${xu?" "+xu:""}`])}
+  c.strokeStyle=css("--muted");c.lineWidth=1;c.setLineDash([2,3]);c.beginPath();c.moveTo(Math.round(px)+.5,d.Tp);c.lineTo(Math.round(px)+.5,d.Tp+d.ph);c.stroke();c.setLineDash([]);
+  const pan=css("--panel");for(const [x,y,col] of dots){c.beginPath();c.arc(x,y,4.5,0,7);c.fillStyle=col;c.fill();c.lineWidth=2;c.strokeStyle=pan;c.stroke()}
+  const head=`<div>${o.xname||""}${o.xname?" ":""}<b>${xs}</b>${xu?" "+xu:""}</div>`;
+  tip.innerHTML=head+lines.map(([col,t])=>`<div>${col?`<span class="sw" style="background:${col}"></span>`:""}${t}</div>`).join("");
+  tip.hidden=false;const tw=tip.offsetWidth;let left=px+14;if(left+tw>d.W-4)left=px-14-tw;tip.style.left=Math.max(2,left)+"px";tip.style.top=(d.Tp+2)+"px";
+}
+function grafDownload(blob,name){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
+function grafPNG(cv){const d=cv._pd;if(!d)return;const s=Math.max(2,window.devicePixelRatio||1);
+  const off=document.createElement("canvas");off.setAttribute("height",d.H);off.style.width=d.W+"px";
+  Object.defineProperty(off,"clientWidth",{value:d.W});off.id=cv.id;off.dataset.ghost="";
+  off._pd=cv._pd;plot(off,{...d.o,_dpr:s,_export:true});
+  const cap=cv.closest(".plot").querySelector(".cap").textContent.trim(),pad=12,capH=24;
+  const fin=document.createElement("canvas");fin.width=off.width+pad*2*s;fin.height=off.height+(capH+pad)*s;
+  const c=fin.getContext("2d");c.fillStyle=css("--panel");c.fillRect(0,0,fin.width,fin.height);c.scale(s,s);
+  c.fillStyle=css("--fg");c.font="500 13px "+css("--f-body");c.textBaseline="middle";
+  let t=cap;while(c.measureText(t).width>d.W&&t.length>4)t=t.slice(0,-2);if(t!==cap)t=t.slice(0,-1)+"…";c.fillText(t,pad,pad+capH/2-2);
+  c.setTransform(1,0,0,1,0,0);c.drawImage(off,pad*s,(capH+pad)*s);
+  fin.toBlob(b=>b&&grafDownload(b,`neurosim_${cv.id}_${lang}.png`),"image/png")}
+function grafCSV(cv){const d=cv._pd;if(!d)return;const o=d.o,num=v=>isFinite(v)?String(+(+v).toPrecision(7)):"",q=s=>/[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+  let rows=[];const xh=o.xl||"x";
+  if(o.raster){rows.push([xh,T("g_cellw"),"E/I"].map(q).join(","));for(const r of o.raster)rows.push([num(r[0]),r[1],r[1]<o.nE?"E":"I"].join(","))}
+  else{const cols=(o.series||[]).map((s,i)=>({x:s.x,y:s.y,h:(s.lab||o.ylab||o.yl||"y")+(o.yu&&(s.lab||o.ylab)?` (${o.yu})`:"")}));
+    if(d.ghost)cols.push({x:d.ghost[0].x,y:d.ghost[0].y,h:T("g_prev")+(o.yu?` (${o.yu})`:"")});
+    const pts=(o.points||[]).map(p=>({x:p.x,y:p.y,h:p.lab+(o.yu?` (${o.yu})`:"")}));
+    const same=cols.length&&cols.every(k=>k.x.length===cols[0].x.length&&k.x[0]===cols[0].x[0]&&k.x[k.x.length-1]===cols[0].x[cols[0].x.length-1]);
+    if(same&&!pts.length){rows.push([xh,...cols.map(k=>k.h)].map(q).join(","));for(let i=0;i<cols[0].x.length;i++)rows.push([num(cols[0].x[i]),...cols.map(k=>num(k.y[i]))].join(","))}
+    else{rows.push([T("g_series"),xh,o.yl||"y"].map(q).join(","));for(const k of [...cols,...pts])for(let i=0;i<k.x.length;i++)rows.push([q(k.h),num(k.x[i]),num(k.y[i])].join(","))}}
+  grafDownload(new Blob(["﻿"+rows.join("\r\n")+"\r\n"],{type:"text/csv;charset=utf-8"}),`neurosim_${cv.id}_${lang}.csv`)}
+function grafRedraw(){if((MODS[cur][0]==="m-net"&&!lastNet)||(MODS[cur][0]==="m-cls"&&!lastCls))return;MODS[cur][2]()} // never starts a second network/classifier run
+function grafEnhance(){
+  document.querySelectorAll(".plot").forEach(pl=>{const cv=pl.querySelector("canvas"),cap=pl.querySelector(".cap");if(!cv||pl.querySelector(".pbox"))return;
+    const head=document.createElement("div");head.className="phead";cap.replaceWith(head);head.appendChild(cap);
+    const tools=document.createElement("div");tools.className="ptools";head.appendChild(tools);
+    const mk=(k,fn)=>{const b=document.createElement("button");b.type="button";b.dataset.i="g_"+k;b.dataset.gt="g_"+k+"_t";b.onclick=fn;tools.appendChild(b);return b};
+    if(cv.dataset.ghost){const b=mk("ghost",()=>{const g=GH[cv.id]||(GH[cv.id]={cur:null,base:null,on:true});g.on=!g.on;b.setAttribute("aria-pressed",g.on);grafRedraw()});b.setAttribute("aria-pressed","true")}
+    mk("png",()=>grafPNG(cv));mk("csv",()=>grafCSV(cv));
+    const box=document.createElement("div");box.className="pbox";cv.replaceWith(box);box.appendChild(cv);cv.classList.add("main");
+    const ov=document.createElement("canvas");ov.className="ov";ov.setAttribute("aria-hidden","true");box.appendChild(ov);
+    const tip=document.createElement("div");tip.className="ptip";tip.hidden=true;tip.setAttribute("role","status");tip.setAttribute("aria-live","polite");box.appendChild(tip);
+    cv.tabIndex=0;cv.setAttribute("role","img");
+    const pos=e=>{const r=cv.getBoundingClientRect();cv._hy=e.clientY-r.top;return e.clientX-r.left};
+    box.addEventListener("pointermove",e=>grafHover(cv,pos(e)));
+    box.addEventListener("pointerdown",e=>grafHover(cv,pos(e)));
+    box.addEventListener("pointerleave",e=>{if(e.pointerType!=="touch"){cv._hy=null;grafHover(cv,null)}});
+    cv.addEventListener("keydown",e=>{const d=cv._pd;if(!d)return;let x=cv._hov?cv._hov.x:d.L+d.pw/2;const st=d.pw*(e.shiftKey?.1:.01);
+      if(e.key==="ArrowRight")x+=st;else if(e.key==="ArrowLeft")x-=st;else if(e.key==="Home")x=d.L;else if(e.key==="End")x=d.L+d.pw;else if(e.key==="Escape"){grafHover(cv,null);return}else return;
+      e.preventDefault();cv._hy=null;grafHover(cv,Math.max(d.L,Math.min(d.L+d.pw,x)))});
+    cv.addEventListener("focus",()=>{const d=cv._pd;if(d&&!cv._hov){cv._hy=null;grafHover(cv,d.L+d.pw/2)}});
+    cv.addEventListener("blur",()=>grafHover(cv,null));
+  })}
+function grafTexts(){document.querySelectorAll("[data-gt]").forEach(b=>{b.title=T(b.dataset.gt);b.setAttribute("aria-label",T(b.dataset.gt))});
+  document.querySelectorAll(".plot").forEach(pl=>{const cv=pl.querySelector("canvas.main"),cap=pl.querySelector(".cap");if(cv)cv.setAttribute("aria-label",(cap?cap.textContent+" ":"")+T("g_hint"))})}
+// GRAF: ghost snapshot — the run on screen when an interaction starts becomes the grey reference
+let grafLastKey=0;
+function grafSnap(ids){for(const id of ids){const g=GH[id];if(g&&g.cur)g.base=g.cur}}
+function grafWireGhost(){
+  const map=[[["hh-I","hh-dur","hh-na","hh-k","hh-ko","hh-T","hh-ca"],"hh-presets","hh-v"],[["lif-I","lif-dt"],null,"lif-v"],[["izh-a","izh-b","izh-c","izh-d","izh-I","izh-cls"],null,"izh-v"]];
+  for(const [ctl,pre,id] of map){
+    for(const c of ctl){$(c).addEventListener("pointerdown",()=>grafSnap([id]));
+      $(c).addEventListener("keydown",e=>{const now=Date.now();if(now-grafLastKey>1200)grafSnap([id]);grafLastKey=now})}
+    if(pre)$(pre).addEventListener("click",e=>{if(e.target.closest("button"))grafSnap([id])},true)}}
+/* GRAF: end of plotting layer */
+
+
+// ---------------------------------------------------------------- Hodgkin-Huxley
+const vtrap=(x,k)=>Math.abs(x)<1e-9?k:x/(1-Math.exp(-x/k));
+/* DATOS: rates() accepts optional p.phi (temperature factor, Q10 = 3) and p.sh (gate voltage shift from extracellular Ca2+).
+   With phi = 1 and sh = 0 it is identical to the Python package (hh.gate_rates). */
+function rates(V,p){const f=p&&p.phi||1,W=V+(p&&p.sh||0);
+  return[f*0.1*vtrap(W+40,10),f*4*Math.exp(-(W+65)/18),f*0.07*Math.exp(-(W+65)/20),f/(1+Math.exp(-(W+35)/10)),f*0.01*vtrap(W+55,10),f*0.125*Math.exp(-(W+65)/80)]}
+function hhRun(p,stim,dur,dt,init,every){
+  let V=init?init.V:-65,[am,bm,ah,bh,an,bn]=rates(V,p);
+  let m=init?init.m:am/(am+bm),h=init?init.h:ah/(ah+bh),n=init?init.n:an/(an+bn);
+  const N=Math.round(dur/dt),rec=stim!==null,t=[],Vs=[],ms=[],hs=[],ns=[],ev=every||5;
+  for(let i=0;i<N;i++){const tt=i*dt,I=rec?stim(tt):0;
+    const INa=p.gNa*m*m*m*h*(V-50),IK=p.gK*n*n*n*n*(V-p.EK),IL=0.3*(V+54.387);
+    [am,bm,ah,bh,an,bn]=rates(V,p);
+    V+=dt*(I-INa-IK-IL); m+=dt*(am*(1-m)-bm*m); h+=dt*(ah*(1-h)-bh*h); n+=dt*(an*(1-n)-bn*n);
+    if(rec&&i%ev===0){t.push(tt);Vs.push(V);ms.push(m);hs.push(h);ns.push(n)}}
+  return{t,V:Vs,m:ms,h:hs,n:ns,end:{V,m,h,n}}}
+/* DATOS: core without recording, for fast sweeps. Returns spike times (upward 0 mV crossings, as hh.spike_times). */
+function hhSpikes(p,stim,dur,dt,init){
+  let V=init?init.V:-65,[am,bm,ah,bh,an,bn]=rates(V,p);
+  let m=init?init.m:am/(am+bm),h=init?init.h:ah/(ah+bh),n=init?init.n:an/(an+bn);
+  const N=Math.round(dur/dt),sp=[];let vs=0,vmin=Infinity,vmax=-Infinity;
+  for(let i=0;i<N;i++){const tt=i*dt,I=stim(tt),Vo=V;
+    [am,bm,ah,bh,an,bn]=rates(V,p);
+    V+=dt*(I-p.gNa*m*m*m*h*(V-50)-p.gK*n*n*n*n*(V-p.EK)-0.3*(V+54.387));
+    m+=dt*(am*(1-m)-bm*m); h+=dt*(ah*(1-h)-bh*h); n+=dt*(an*(1-n)-bn*n);vs+=V;if(V<vmin)vmin=V;if(V>vmax)vmax=V;
+    if(Vo<0&&V>=0)sp.push(tt+dt)}
+  return{sp,end:{V,m,h,n},vmean:vs/N,vmin,vmax}}
+/* DATOS: parameters from the tab-1 controls. Temperature: phi = 3^((T-6.3)/10). Ca2+: sh = -18·log10(Ca/Ca_ref) mV.
+   The step shrinks when phi > 2 to keep Euler stable (dt = 0.01/ceil(phi/2)). */
+function hhParams(o){const g=id=>o&&o[id]!=null?o[id]:+$("hh-"+id).value;
+  const na=g("na"),k=g("k"),ko=g("ko"),T=g("T"),ca=g("ca"),phi=Math.pow(3,(T-6.3)/10),sub=Math.max(1,Math.ceil(phi/2));
+  return{gNa:120*(1-na/100),gK:36*(1-k/100),EK:-77+26.7*Math.log(ko/4),phi,sh:-18*Math.log10(ca),dt:0.01/sub,sub,na,k,ko,T,ca}}
+/* Everything tab 1 shows, as a pure function (also used by the answer probe) */
+function hhCompute(I,dur,p){
+  const settled=hhRun(p,null,300,p.dt).end;              // start from the cell's own state
+  const t0=20, r=hhRun(p,tt=>(tt>=t0&&tt<t0+dur)?I:0,160,p.dt,settled,5*p.sub);
+  const sp=[];for(let i=1;i<r.V.length;i++)if(r.V[i-1]<0&&r.V[i]>=0)sp.push(r.t[i]);
+  /* UX: if the unstimulated cell oscillates, "resting V" would be a snapshot mid-spike; show mean V instead */
+  const q0=hhSpikes(p,()=>0,100,p.dt,settled),spont=q0.sp.length>0,vmean=q0.vmean,osc=!spont&&q0.vmax-q0.vmin>1; /* integration: damped oscillation (e.g. 9 mM K+) also gets the mean */
+  const inPulse=sp.filter(s=>s>=t0+20&&s<t0+dur); const rate=dur>40&&inPulse.length>1?1000*(inPulse.length-1)/(inPulse[inPulse.length-1]-inPulse[0]):null;
+  let w=null; if(sp.length){const i0=r.t.indexOf(sp[0]);let a=i0;while(a>0&&r.V[a]>-20)a--;let b=i0;while(b<r.V.length-1&&r.V[b]>-20)b++;w=r.t[b]-r.t[a]}
+  return{t0,r,sp,settled,spont,osc,vmean,rate,w}}
+function updHH(){
+  const I=+$("hh-I").value,dur=+$("hh-dur").value,na=+$("hh-na").value,k=+$("hh-k").value,ko=+$("hh-ko").value;
+  out("hh-I",nf(I,2));out("hh-dur",dur);out("hh-na",na+" %");out("hh-k",k+" %");out("hh-ko",nf(ko,1));
+  const p=hhParams(),EK=p.EK,tC=p.T,ca=p.ca;out("hh-T",nf(tC,1)+" °C");out("hh-ca",nf(ca,2)+"×");
+  const {t0,r,sp,settled,spont,osc,vmean,rate,w}=hhCompute(I,dur,p);
+  /* GRAF: palette/labels as in the article's Fig. 2; legend in its own strip + direct labels */
+  plot($("hh-v"),{series:[{x:r.t,y:r.V,col:css("--s1"),w:1.6}],xr:[0,160],yr:[-90,55],xl:T("time"),yl:"V (mV)",ylab:"V",yu:"mV",xu:"ms",xname:"t =",bars:[[t0,Math.min(160,t0+dur)]],hlines:[{y:0,lab:"0 mV"}]});
+  plot($("hh-g"),{series:[{x:r.t,y:r.m,col:css("--s1"),lab:"m"},{x:r.t,y:r.h,col:css("--s2"),lab:"h",dash:[6,3]},{x:r.t,y:r.n,col:css("--s3"),lab:"n",dash:[7,3,1.5,3]}],xr:[0,160],yr:[0,1],xl:T("time"),yl:T("g_open"),xu:"ms",xname:"t =",yd:2,direct:true});
+  chips($("hh-s"),[[T("spikes"),sp.length],[T("rate"),rate?nf(rate,0)+" Hz":"—"],(spont||osc?[T("ux_vmean"),nf(vmean,1)+" mV ("+T(spont?"ux_spont":"ux_osc")+")"]:[T("vrest"),nf(settled.V,1)+" mV"]),[T("ek"),nf(EK,1)+" mV"],[T("width"),w?nf(w,2)+" ms":"—"]]);
+  $("hh-note").textContent=hhNote(na,k,ko,tC,ca);
+  uxMark("hh-presets",HHP.map(([,q])=>q.na===na&&q.k===k&&q.ko===ko&&q.I===I&&(q.T??6.3)===tC&&(q.ca??1)===ca));
+}
+/* UX: strings in TX (nt_hh_*); DATOS: temperature and calcium notes first */
+function hhNote(na,k,ko,tC,ca){
+  if(na>=100)return T("nt_hh_tetx");
+  if(tC>=21)return T("nt_heat");
+  if(ca<=0.5)return T("nt_hypoca");
+  if(ca<0.95)return T("nt_lowca");
+  if(ca>1.05)return T("nt_hica");
+  if(tC>7)return T("nt_warm");
+  if(ko>=8.5)return T("nt_hh_khi");
+  if(ko>=6)return T("nt_hh_kmid");
+  if(ko<3.5)return T("nt_hh_klo");
+  if(k>=40)return T("nt_hh_kb40");
+  if(k>0)return T("nt_hh_kb");
+  if(na>0)return T("nt_hh_na").replace("{na}",na);
+  return T("nt_hh_ctrl");
+}
+const HHP=[["p_ctrl",{na:0,k:0,ko:4,I:10}],["p_lido",{na:30,k:0,ko:4,I:10}],["p_tetx",{na:100,k:0,ko:4,I:10}],["p_4ap",{na:0,k:40,ko:4,I:0}],["p_k7",{na:0,k:0,ko:7,I:0}],["p_k12",{na:0,k:0,ko:12,I:8}],["p_k25",{na:0,k:0,ko:2.5,I:8}],
+  ["p_hypoca",{na:0,k:0,ko:4,I:0,ca:0.4}],["p_hyperca",{na:0,k:0,ko:4,I:8,ca:2}],["p_heat",{na:0,k:0,ko:4,I:10,T:26}]];
+
+// ---------------------------------------------------------------- LIF
+const LIF={tau:10,EL:-65,Vth:-50,Vr:-65,R:10,tref:2};
+/* DATOS: fix. The spike is dated at t[i+1] and the cell is held at V_reset while t[i] < t_spike + t_ref (as point.simulate_lif). */
+function lifRun(I,dur,dt){const N=Math.round(dur/dt),t=new Array(N),Vs=new Array(N),sp=[];let hold=-1;
+  Vs[0]=LIF.EL;for(let i=0;i<N;i++)t[i]=i*dt;
+  for(let i=0;i<N-1;i++){if(t[i]<hold){Vs[i+1]=LIF.Vr;continue}
+    const Vi=Vs[i]>=LIF.Vth?LIF.Vr:Vs[i];            // the spike sample is drawn at +20 mV
+    let Vn=Vi+dt*(-(Vi-LIF.EL)+LIF.R*I)/LIF.tau;
+    if(Vn>=LIF.Vth){sp.push(t[i+1]);Vn=20;hold=t[i+1]+LIF.tref}
+    Vs[i+1]=Vn}
+  return{t,V:Vs,sp}}
+const lifExact=I=>{const d=LIF.R*I-(LIF.Vth-LIF.EL);return d<=0?0:1000/(LIF.tref+LIF.tau*Math.log(LIF.R*I/d))};
+const isiRate=sp=>sp.length>2?1000*(sp.length-1)/(sp[sp.length-1]-sp[0]):0;
+function updLIF(){const I=+$("lif-I").value,dt=+$("lif-dt").value;out("lif-I",nf(I,1));
+  const r=lifRun(I,200,dt);
+  plot($("lif-v"),{series:[{x:r.t,y:r.V,col:css("--s2")}],xr:[0,200],yr:[-70,25],xl:T("time"),yl:"V (mV)",ylab:"V",yu:"mV",xu:"ms",xname:"t =",hlines:[{y:-50,lab:T("g_thr")+" −50 mV"}]});
+  const Is=[],ex=[],sim=[];for(let i=0;i<=50;i++){const x=i*0.1;Is.push(x);ex.push(lifExact(x))}
+  const Ip=[];for(let i=0;i<=25;i++){const x=i*0.2;Ip.push(x);sim.push(isiRate(lifRun(x,1000,dt).sp))}
+  plot($("lif-f"),{series:[{x:Is,y:ex,col:css("--fg"),lab:T("exact"),w:1.8}],points:[{x:Ip,y:sim,col:css("--s1"),lab:T("sim")+" Δt = "+nf(dt,2)}],xr:[0,5],yr:[0,Math.max(...ex)*1.08],xl:T("I_na"),yl:T("g_rate"),yu:"Hz",xu:"nA",xname:"I =",yd:1});
+  const e=lifExact(I),s=isiRate(lifRun(I,2000,dt).sp);
+  chips($("lif-s"),[[T("rheo"),nf(1.5,1)+" nA"],[T("exact"),nf(e,1)+" Hz"],[T("sim"),nf(s,1)+" Hz"],[T("err"),nf(Math.abs(e-s),2)+" Hz"]]);
+  /* UX: dynamic note */
+  $("lif-note").textContent=I<=1.5?T("nt_lif_sub").replace("{v}",nf(LIF.EL+LIF.R*I,0)):dt>=0.5?T("nt_lif_dt").replace("{dt}",nf(dt,dt<1?1:0)):T("nt_lif_ok");
+}
+
+// ---------------------------------------------------------------- Izhikevich
+const IZH={RS:[0.02,0.2,-65,8],IB:[0.02,0.2,-55,4],CH:[0.02,0.2,-50,2],FS:[0.1,0.2,-65,2],LTS:[0.02,0.25,-65,2]};
+/* DATOS: fix, u is updated with the previous-step v (as point.izhikevich_cell) */
+function izhRun(a,b,c,d,I,dur,dt){let v=-65,u=b*v;const t=[],vs=[],sp=[];const N=Math.round(dur/dt);
+  for(let i=0;i<N;i++){const tt=i*dt;if(v>=30){vs.push(30);sp.push(tt);v=c;u+=d}else vs.push(v);t.push(tt);
+    const Ii=tt>=20?I:0;const dv=0.04*v*v+5*v+140-u+Ii,du=a*(b*v-u);v+=dt*dv;u+=dt*du}return{t,v:vs,sp}}
+function izhStats(r){const isi=r.sp.slice(1).map((s,i)=>s-r.sp[i]);return{isi,burst:isi.length?isi.filter(x=>x<10).length/isi.length:0}}
+function updIZH(){const a=+$("izh-a").value,b=+$("izh-b").value,c=+$("izh-c").value,d=+$("izh-d").value,I=+$("izh-I").value;
+  out("izh-a",nf(a,3));out("izh-b",nf(b,3));out("izh-c",nf(c,0));out("izh-d",nf(d,1));out("izh-I",nf(I,1));
+  const r=izhRun(a,b,c,d,I,250,0.1); /* DATOS: 250 ms as in the article's Fig. 4 */
+  plot($("izh-v"),{series:[{x:r.t,y:r.v,col:css("--s2"),w:1.4}],xr:[0,250],yr:[-90,40],xl:T("time"),yl:"v (mV)",ylab:"v",yu:"mV",xu:"ms",xname:"t =",bars:[[20,250]]});
+  const {burst}=izhStats(r);
+  chips($("izh-s"),[[T("spikes")+" (0–250 ms)",r.sp.length],["ISI < 10 ms",nf(100*burst,0)+" %"]]);
+  /* UX: keep the class menu honest + class note */
+  const cls=Object.keys(IZH).find(k=>IZH[k].every((x,i)=>Math.abs(x-[a,b,c,d][i])<1e-9))||"custom";
+  $("izh-cls").value=cls;$("izh-note").textContent=T("nt_izh_"+cls);}
+
+// ---------------------------------------------------------------- network
+function rngf(seed){let s=seed>>>0;return()=>{s=(s+0x6D2B79F5)>>>0;let t=s;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+function poisson(lam,r){let L=Math.exp(-lam),k=0,p=1;do{k++;p*=r()}while(p>L);return k-1}
+/* DATOS: configurable threshold (params={"V_th":vth} in Python) */
+function netRun(g,ext,nI,seed=0,vth=LIF.Vth){const nE=800,n=nE+nI,J=0.2,dt=0.1,dur=400,r=rngf(seed+1);
+  const out=[];for(let i=0;i<n;i++){const l=[];for(let j=0;j<n;j++)if(j!==i&&r()<0.1)l.push(j);out.push(l)} // pre -> list of post
+  const V=new Float64Array(n).map(()=>LIF.Vr+r()*(vth-LIF.Vr)),ready=new Float64Array(n),inp=new Float64Array(n);
+  let spk=[];const times=[],ids=[];
+  for(let s=0;s<dur/dt;s++){const now=s*dt;inp.fill(0);
+    for(const j of spk){const w=j<nE?J:-g*J;for(const k of out[j])inp[k]+=w}
+    const nx=[];for(let i=0;i<n;i++){if(now>=ready[i]){V[i]+=dt*(LIF.EL-V[i])/LIF.tau+inp[i]+J*poisson(ext*dt,r);
+      if(V[i]>=vth){nx.push(i);times.push(now);ids.push(i);V[i]=LIF.Vr;ready[i]=now+LIF.tref}}else V[i]=LIF.Vr}
+    spk=nx}
+  return{times,ids,n,nE,dur,vth}}
+function netStats(net){const t0=100,T=(net.dur-t0)/1000;let cnt=0;const per=new Map();const bins=new Float64Array(net.dur-t0);
+  for(let i=0;i<net.times.length;i++){const t=net.times[i];if(t<t0)continue;cnt++;bins[Math.min(bins.length-1,Math.floor(t-t0))]++;
+    const id=net.ids[i];if(id%5===0){if(!per.has(id))per.set(id,[]);per.get(id).push(t)}}
+  /* DATOS: population SD/variance (ddof = 0) as numpy .std()/.var() */
+  const cvs=[];for(const s of per.values()){if(s.length>3){const d=s.slice(1).map((x,i)=>x-s[i]);const m=d.reduce((a,b)=>a+b)/d.length;const sd=Math.sqrt(d.reduce((a,b)=>a+(b-m)**2,0)/d.length);cvs.push(sd/m)}}
+  const mb=bins.reduce((a,b)=>a+b)/bins.length,vb=bins.reduce((a,b)=>a+(b-mb)**2,0)/bins.length;
+  return{rate:cnt/net.n/T,cv:cvs.length?cvs.reduce((a,b)=>a+b)/cvs.length:NaN,sync:mb>0?vb/mb:NaN}}
+function netShow(net){const ras=[];const te=css("--exc"),ro=css("--inh");
+  for(let i=0;i<net.times.length;i++){if(net.ids[i]%4)continue;ras.push([net.times[i],net.ids[i],net.ids[i]<net.nE?te:ro])}
+  plot($("net-r"),{raster:ras,nE:net.nE,xr:[0,net.dur],yr:[0,net.n],xl:T("time"),yl:T("g_cell"),xu:"ms",xname:"t =",hlines:[{y:net.nE}],legend:[{lab:T("g_exc"),col:te,kind:"tick"},{lab:T("g_inh"),col:ro,kind:"tick"}]});
+  const pr=new Float64Array(net.dur);for(const t of net.times)pr[Math.min(net.dur-1,Math.floor(t))]+=1000/net.n;
+  const gb=GH["net-p"]&&GH["net-p"].on&&GH["net-p"].base?GH["net-p"].base[0].y:[];
+  const x=[...pr.keys()];plot($("net-p"),{series:[{x,y:[...pr],col:css("--s2"),w:1.2}],fill:true,xr:[0,net.dur],yr:[0,Math.max(10,...pr,...gb)*1.05],xl:T("time"),yl:"Hz",ylab:T("g_rate").replace(/ \(Hz\)/,""),yu:"Hz",xu:"ms",xname:"t =",yd:0});
+  const s=netStats(net);chips($("net-s"),[[T("mrate"),nf(s.rate,1)+" Hz"],[T("cv"),nf(s.cv,2)],[T("sync"),nf(s.sync,1)]]);
+  const lv=s.sync>50?2:s.sync>3?1:0;
+  $("net-note").textContent=T(["nt_net0","nt_net1","nt_net2"][lv])+(net.vth!=null&&net.vth>LIF.Vth?" "+T("nt_aed"):"");
+  uxStale()}
+function netParams(){return[+$("net-g").value,+$("net-ext").value,+$("net-ni").value,+$("net-th").value]}
+function runNet(){grafSnap(["net-p"]);const b=$("net-run");b.textContent=T("running");b.disabled=true;
+  setTimeout(()=>{const [g,e,ni,th]=netParams(),t0=performance.now();lastNet=netRun(g,e,ni,0,th);lastNet.p=[g,e,ni,th];lastNet.ms=performance.now()-t0;netShow(lastNet);b.textContent=T("run");b.disabled=false},30)}
+let lastNet=null;
+const NETP=[["n_weak",{g:2,e:8,ni:200}],["n_strong",{g:6,e:7,ni:200}],["n_loss",{g:6,e:7,ni:50}],["n_aed",{g:6,e:7,ni:50,th:-48}]];
+
+/* DATOS: ================================================================ protocolos HH (pestaña 5) */
+const P0={na:0,k:0,ko:4,T:6.3,ca:1};
+function condText(p){const blk=x=>x?"−"+x+" %":"0 %";return T("cond")+": Na⁺ "+blk(p.na)+", K⁺ "+blk(p.k)+", [K⁺]ₒ "+nf(p.ko,1)+" mM, "+nf(p.T,1)+" °C, Ca²⁺ "+nf(p.ca,2)+"×"}
+const condKey=p=>[p.na,p.k,p.ko,p.T,p.ca].join("|");
+const proCache=new Map();
+function busy(btn,on,label){if(!btn)return;btn.disabled=on;btn.textContent=on?T("calc"):T(label)}
+// pinza de voltaje: compuertas integradas de forma exacta a voltaje fijo
+function vClamp(p,Vc,dur=14,t1=1,t2=11){const dt=0.01,N=Math.round(dur/dt);let V=-65,[am,bm,ah,bh,an,bn]=rates(V,p);
+  let m=am/(am+bm),h=ah/(ah+bh),n=an/(an+bn),cur=NaN,mi,hi,ni,em,eh,en;const t=[],INa=[],IK=[];let pk=0,ikEnd=0;
+  for(let i=0;i<N;i++){const tt=i*dt;V=(tt>=t1&&tt<t2)?Vc:-65;
+    if(V!==cur){cur=V;[am,bm,ah,bh,an,bn]=rates(V,p);mi=am/(am+bm);hi=ah/(ah+bh);ni=an/(an+bn);em=Math.exp(-dt*(am+bm));eh=Math.exp(-dt*(ah+bh));en=Math.exp(-dt*(an+bn))}
+    const ina=p.gNa*m*m*m*h*(V-50),ik=p.gK*n*n*n*n*(V-p.EK);t.push(tt);INa.push(ina);IK.push(ik);
+    if(tt>=t1&&tt<t2){if(Math.abs(ina)>Math.abs(pk))pk=ina;ikEnd=ik}
+    m=mi+(m-mi)*em;h=hi+(h-hi)*eh;n=ni+(n-ni)*en}
+  return{t,INa,IK,pk,ikEnd}}
+// umbral de un pulso de 1 ms (bisección) desde el estado asentado
+function spikeIn(p,s,stim,dur,a,b,minN=1){return hhSpikes(p,stim,dur,p.dt,s).sp.filter(x=>x>=a&&x<b).length>=minN}
+function isSpont(p,s){return hhSpikes(p,()=>0,200,p.dt,s).sp.length>0}
+function thr1(p,s){let lo=0,hi=200;if(!spikeIn(p,s,t=>t>=5&&t<6?hi:0,20,5,20))return NaN;
+  for(let j=0;j<16;j++){const mid=(lo+hi)/2;spikeIn(p,s,t=>t>=5&&t<6?mid:0,20,5,20)?hi=mid:lo=mid}return hi}
+const PP_INT=[1.5,2,2.5,3,3.5,4,4.5,5,6,7,8,10,12,15,20,25];
+function ppCurve(p){const s=hhRun(p,null,300,p.dt).end,spont=isSpont(p,s),th=spont?NaN:thr1(p,s);
+  if(!isFinite(th))return{s,th,spont,ratio:PP_INT.map(()=>NaN)};
+  const A1=2*th,ratio=PP_INT.map(D=>{const t2=5+D,two=A=>spikeIn(p,s,t=>(t>=5&&t<6)?A1:(t>=t2&&t<t2+1)?A:0,t2+12,5,t2+10,2);
+    let hi=15*th;if(!two(hi))return NaN;let lo=0;for(let j=0;j<12;j++){const mid=(lo+hi)/2;two(mid)?hi=mid:lo=mid}return hi/th});
+  return{s,th,spont,ratio}}
+// curva f-I (como clinic.fi_curve: arranque en reposo estándar, disparos entre 100 y 400 ms)
+function fiCurve(p){const I=[],f=[];for(let x=0;x<=30;x++){I.push(x);f.push(hhSpikes(p,()=>x,400,p.dt).sp.filter(t=>t>100).length/0.3)}
+  const k=f.findIndex(v=>v>0);return{I,f,onset:k<0?null:I[k]}}
+// ancho a -20 mV tras un pulso de 1 ms y 20 µA/cm² (como clinic.spike_width)
+function hhWidth(p){const s=hhRun(p,null,300,p.dt).end,r=hhRun(p,t=>t>=5&&t<6?20:0,40,p.dt,s,1);let up=-1,w=NaN;
+  for(let i=1;i<r.V.length;i++){if(up<0&&r.V[i-1]<-20&&r.V[i]>=-20)up=r.t[i];else if(up>=0&&r.V[i-1]>-20&&r.V[i]<=-20){w=r.t[i]-up;break}}
+  return{w,r,spont:isSpont(p,s)}}
+function benchmark(){const P=hhParams(P0),[a,b,c,d]=IZH.RS;
+  const time=(f)=>{let n=0,t0=performance.now(),el=0;do{f();n++;el=performance.now()-t0}while(el<120&&n<200);return el/n};
+  const hh=time(()=>hhRun(P,()=>10,1000,0.01,undefined,1)),lif=time(()=>lifRun(2,1000,0.1)),izh=time(()=>izhRun(a,b,c,d,10,1000,0.25));
+  return[["Hodgkin-Huxley",0.01,1e5,hh,"—"],["LIF",0.1,1e4,lif,"≈100×"],["Izhikevich",0.25,4e3,izh,"≈600–800×"]].map(([m,dt,st,ms,pap])=>({m,dt,st,ms,us:1000*ms/st,ratio:hh/ms,pap}))}
+function proLayout(v){$("pro-vc-row").hidden=v!=="vc";$("pro-int-row").hidden=v!=="pp";$("pro-amp-row").hidden=v!=="pp";
+  $("pro-run").hidden=!(v==="fi"||v==="kw"||v==="cost");$("pro-a").parentElement.hidden=v==="cost";$("pro-pb").hidden=v==="cost";
+  $("pro-tab").innerHTML="";$("pro-s").innerHTML="";$("pro-pb").hidden=v==="cost"||v==="fi"}
+function updPro(force){const v=$("pro-sel").value,p=hhParams(),key=v+"|"+condKey(p);proLayout(v);
+  $("pro-cond").textContent=condText(p);
+  out("pro-vc",nf(+$("pro-vc").value,0));out("pro-int",nf(+$("pro-int").value,1));out("pro-amp",nf(+$("pro-amp").value,2)+"×");
+  const heavy=v==="fi"||v==="kw"||v==="cost";
+  if(heavy&&(force||!proCache.has(key))){busy($("pro-run"),true);$("pro-note").textContent=T("calc");
+    setTimeout(()=>{let res;const t0=performance.now();
+      if(v==="fi")res={cur:fiCurve(p),ctl:condKey(p)===condKey(P0)?null:fiCurve(hhParams(P0))};
+      else if(v==="kw")res={sweep:[0,5,10,15,20,25,30,35].map(k=>({k,...hhWidth(hhParams({...p,k}))}))};
+      else res={rows:benchmark()};
+      res.ms=performance.now()-t0;proCache.set(key,res);busy($("pro-run"),false,"pro_run");if($("pro-sel").value===v)drawPro(v,p,res)},30);return}
+  if(v==="pp"&&!proCache.has(key))proCache.set(key,ppCurve(p));
+  drawPro(v,p,proCache.get(key))}
+function drawPro(v,p,res){const es=lang==="es";$("pro-note").textContent=T(v==="cost"?"cost_note":v+"_note");
+  if(v==="vc"){const Vc=+$("pro-vc").value,r=vClamp(p,Vc);$("pro-c1").textContent=T("vc_c1");$("pro-c2").textContent=T("vc_c2");
+    const mA=a=>a.map(x=>x/1000),iNa=mA(r.INa),iK=mA(r.IK),tot=iNa.map((x,i)=>x+iK[i]),lo=Math.min(-0.05,...iNa,...tot),hi=Math.max(0.05,...iK,...tot);
+    plot($("pro-a"),{series:[{x:r.t,y:iNa,col:css("--s1"),lab:"I_Na",w:1.6},{x:r.t,y:iK,col:css("--s3"),lab:"I_K",w:1.6,dash:[6,3]},{x:r.t,y:tot,col:css("--fg"),lab:"I_Na + I_K",w:1,dash:[2,2]}],
+      xr:[0,14],yr:[lo*1.1,hi*1.25],xl:T("time"),yl:"mA/cm²",yu:"mA/cm²",xu:"ms",xname:"t =",yd:2,hlines:[0]});
+    const Vs=[],pk=[],ik=[];for(let x=-100;x<=60;x+=5){const q=vClamp(p,x);Vs.push(x);pk.push(q.pk/1000);ik.push(q.ikEnd/1000)}
+    plot($("pro-b"),{series:[{x:Vs,y:pk,col:css("--s1"),lab:T("ina_pk")},{x:Vs,y:ik,col:css("--s3"),lab:T("ik_ss"),dash:[6,3]}],points:[{x:[Vc,Vc],y:[r.pk/1000,r.ikEnd/1000],col:css("--s2")}],
+      xr:[-100,60],yr:[Math.min(-0.05,...pk)*1.1,Math.max(0.05,...ik)*1.25],xl:"V (mV)",yl:"mA/cm²",yu:"mA/cm²",xu:"mV",xname:"V =",yd:2,hlines:[0]});
+    chips($("pro-s"),[[T("ina_pk"),nf(r.pk/1000,2)+" mA/cm²"],[T("ik_ss"),nf(r.ikEnd/1000,2)+" mA/cm²"],["E_Na","+50 mV"],[T("ek"),nf(p.EK,1)+" mV"]]);return}
+  if(v==="pp"){const D=+$("pro-int").value,amp=+$("pro-amp").value;$("pro-c1").textContent=T("pp_c1");$("pro-c2").textContent=T("pp_c2");
+    if(res.spont||!isFinite(res.th)){plot($("pro-a"),{xr:[0,50],yr:[-90,55],xl:T("time"),yl:"V (mV)"});plot($("pro-b"),{xr:[0,25],yr:[0,15],xl:T("pp_int"),yl:"×"});
+      chips($("pro-s"),[]);$("pro-note").textContent=T("nt_spont");return}
+    const t2=5+D,A1=2*res.th,r=hhRun(p,t=>(t>=5&&t<6)?A1:(t>=t2&&t<t2+1)?amp*res.th:0,50,p.dt,res.s,p.sub);
+    const n2=hhSpikes(p,t=>(t>=5&&t<6)?A1:(t>=t2&&t<t2+1)?amp*res.th:0,t2+12,p.dt,res.s).sp.filter(x=>x>=5&&x<t2+10).length>=2;
+    plot($("pro-a"),{series:[{x:r.t,y:r.V,col:css("--s1"),w:1.6}],xr:[0,50],yr:[-90,55],xl:T("time"),yl:"V (mV)",ylab:"V",yu:"mV",xu:"ms",xname:"t =",bars:[[5,6],[t2,t2+1]],hlines:[{y:0,lab:"0 mV"}]});
+    const fin=res.ratio.filter(isFinite);
+    plot($("pro-b"),{series:[{x:PP_INT,y:res.ratio,col:css("--s2"),lab:T("curc")}],points:[{x:[D],y:[amp],col:n2?css("--s3"):css("--s1"),lab:T("spk2")+": "+T(n2?"yes":"no")}],
+      xr:[0,25],yr:[0,Math.max(4,...fin,amp)*1.1],xl:T("pp_int"),yl:"×",yu:"×",xu:"ms",xname:"Δ =",yd:2,hlines:[1]});
+    const ia=res.ratio.findIndex(isFinite),ir=res.ratio.findIndex(x=>isFinite(x)&&x<=1.1);
+    chips($("pro-s"),[[T("thr1"),nf(res.th,2)+" µA/cm²"],[T("arp"),ia<0?"> 25 ms":ia===0?"< "+nf(PP_INT[0],1)+" ms":"≈ "+nf(PP_INT[ia-1],1)+"–"+nf(PP_INT[ia],1)+" ms"],
+      [T("rrp"),ir<0?"> 25 ms":"≈ "+nf(PP_INT[ir],1)+" ms"],[T("spk2"),T(n2?"yes":"no")]]);return}
+  if(v==="fi"){$("pro-c1").textContent=T("fi_c1");$("pro-pb").hidden=true;const ser=[{x:res.cur.I,y:res.cur.f,col:css("--s1"),lab:T("curc"),w:1.6}];
+    if(res.ctl)ser.unshift({x:res.ctl.I,y:res.ctl.f,col:css("--ghost"),lab:T("ctrl"),dash:[4,3]});
+    plot($("pro-a"),{series:ser,points:[{x:res.cur.I,y:res.cur.f,col:css("--s1")}],xr:[0,30],yr:[0,Math.max(100,...res.cur.f,...(res.ctl?res.ctl.f:[]))*1.08],xl:T("I_ua"),yl:T("g_rate"),yu:"Hz",xu:"µA/cm²",xname:"I =",yd:1});
+    const on=o=>o.onset==null?T("none"):o.onset+" µA/cm²";
+    chips($("pro-s"),[[T("onset")+" ("+T("curc").toLowerCase()+")",on(res.cur)],...(res.ctl?[[T("onset")+" ("+T("ctrl").toLowerCase()+")",on(res.ctl)]]:[]),[T("ttime"),nf(res.ms,0)+" ms"]]);return}
+  if(v==="kw"){$("pro-c1").textContent=T("kw_c1");$("pro-c2").textContent=T("kw_c2");const sw=res.sweep;
+    const okw=sw.filter(x=>!x.spont&&isFinite(x.w));
+    plot($("pro-a"),{series:[{x:okw.map(x=>x.k),y:okw.map(x=>x.w),col:css("--s1"),w:1.6}],points:[{x:okw.map(x=>x.k),y:okw.map(x=>x.w),col:css("--s1")}],
+      xr:[0,35],yr:[Math.min(1.5,...okw.map(x=>x.w))-0.05,Math.max(2.1,...okw.map(x=>x.w))+0.05],xl:T("kblock"),yl:T("width")+" (ms)",ylab:T("width"),yu:"ms",xu:"%",xname:"K⁺ −",yd:2});
+    const sel=[0,20,30].map(k=>sw.find(x=>x.k===k)),cols=[css("--s1"),css("--s2"),css("--s3")],ds=[[],[6,3],[7,3,1.5,3]];
+    plot($("pro-b"),{series:sel.map((x,i)=>({x:x.r.t,y:x.r.V,col:cols[i],dash:ds[i],lab:x.k+" % · "+(isFinite(x.w)?nf(x.w,2)+" ms":"—")})),xr:[4,14],yr:[-85,50],xl:T("time"),yl:"V (mV)",yu:"mV",xu:"ms",xname:"t =",hlines:[{y:-20,lab:"−20 mV"}]});
+    chips($("pro-s"),sel.map(x=>[T("kblock").replace(" (%)","")+" "+x.k+" %",isFinite(x.w)?nf(x.w,2)+" ms":"—"]).concat(sw.some(x=>x.spont)?[[T("nt_spont_s"),sw.filter(x=>x.spont).map(x=>x.k+" %").join(", ")]]:[]));return}
+  if(v==="cost"){const rows=res.rows;
+    $("pro-tab").innerHTML=`<div class="plot" style="overflow-x:auto"><div class="cap">${T("cost_c1")}</div><table class="bench"><thead><tr><th>${T("model")}</th><th>Δt (ms)</th><th>${T("steps")}</th><th>${T("mspers")}</th><th>${T("usstep")}</th><th>${T("ratio")}</th><th>${T("paper")}</th></tr></thead><tbody>`+
+      rows.map(r=>`<tr><td>${r.m}</td><td>${nf(r.dt,2)}</td><td>${r.st.toLocaleString(es?"es-ES":"en-GB",{useGrouping:true})}</td><td>${nf(r.ms,r.ms<1?3:1)}</td><td>${nf(r.us,3)}</td><td>${nf(r.ratio,0)}×</td><td>${r.pap}</td></tr>`).join("")+`</tbody></table></div>`;
+    chips($("pro-s"),[[T("ttime"),nf(res.ms,0)+" ms"]])}}
+/* DATOS: fin protocolos HH */
+
+
+/* DATOS: ================================================================ clasificador (pestaña 6) */
+const CLS=["RS","IB","CH","FS","LTS"];
+function gauss(r){let u=0;while(u===0)u=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r())}
+// make_dataset de classifier.py: a, b, d × (1 + jitter·N), c + 2·N, escalón U(6, 14) desde 20 ms, ruido blanco σ/√Δt, Δt = 0,25 ms, 500 ms
+function izhTrains(key,n,jit,noise,r){const [a0,b0,c0,d0]=IZH[key],dt=0.25,N=2000,ns=noise/Math.sqrt(dt),out=[];
+  for(let k=0;k<n;k++){const a=a0*(1+jit*gauss(r)),b=b0*(1+jit*gauss(r)),c=c0+2*gauss(r),d=d0*(1+jit*gauss(r)),amp=6+8*r();
+    let v=-65,u=b*v;const sp=[];
+    for(let i=0;i<N;i++){const t=i*dt;const I=(t>=20?amp:0)+(noise?ns*gauss(r):0);
+      if(v>=30){sp.push(t);v=c;u+=d}
+      const dv=0.04*v*v+5*v+140-u+I,du=a*(b*v-u);v+=dt*dv;u+=dt*du}
+    out.push(sp)}return out}
+// spike_train_features de classifier.py
+function trainFeatures(sp,onset=20,dur=500){const s=sp.filter(x=>x>=onset),rate=s.length/((dur-onset)/1000);let cv=0,ad=0,bu=0;
+  if(s.length>=3){const isi=s.slice(1).map((x,i)=>x-s[i]),m=isi.reduce((a,b)=>a+b)/isi.length;
+    cv=Math.sqrt(isi.reduce((a,b)=>a+(b-m)**2,0)/isi.length)/m;ad=(isi[isi.length-1]-isi[0])/(isi[isi.length-1]+isi[0]);bu=isi.filter(x=>x<10).length/isi.length}
+  const lat=s.length?s[0]-onset:dur-onset;return[Math.log10(1+rate),cv,ad,bu,Math.min(lat,100)]}
+// SpikeClassNet: ReLU + softmax, descenso por minilotes con momento y L2, inicialización de He; hidden = [] es regresión logística
+function makeNet(nin,nout,hidden,r){const sz=[nin,...hidden,nout],W=[],b=[],vW=[],vb=[];
+  for(let k=0;k<sz.length-1;k++){const i=sz[k],o=sz[k+1],w=new Float64Array(i*o);for(let j=0;j<w.length;j++)w[j]=gauss(r)*Math.sqrt(2/i);
+    W.push(w);b.push(new Float64Array(o));vW.push(new Float64Array(i*o));vb.push(new Float64Array(o))}
+  return{sz,W,b,vW,vb,nparams:W.reduce((a,w,k)=>a+w.length+b[k].length,0)}}
+function fwd(net,x){const acts=[x];for(let k=0;k<net.W.length;k++){const i=net.sz[k],o=net.sz[k+1],a=acts[k],W=net.W[k],z=new Float64Array(o);
+    for(let q=0;q<o;q++){let s=net.b[k][q];for(let p=0;p<i;p++)s+=a[p]*W[p*o+q];z[q]=s}
+    if(k<net.W.length-1){for(let q=0;q<o;q++)if(z[q]<0)z[q]=0}else{let mx=-Infinity;for(const v of z)mx=Math.max(mx,v);let sm=0;for(let q=0;q<o;q++){z[q]=Math.exp(z[q]-mx);sm+=z[q]}for(let q=0;q<o;q++)z[q]/=sm}
+    acts.push(z)}return acts}
+const xent=(net,X,y)=>X.reduce((a,x,i)=>a-Math.log(fwd(net,x).at(-1)[y[i]]+1e-12),0)/X.length;
+const predict=(net,x)=>{const p=fwd(net,x).at(-1);let k=0;for(let q=1;q<p.length;q++)if(p[q]>p[k])k=q;return k};
+function fitNet(net,X,y,Xt,yt,r,{epochs=150,batch=32,lr=0.05,mom=0.9,l2=1e-4}={}){const n=X.length,L=net.W.length,nb=Math.max(1,Math.floor(n/batch)),hist={tr:[],te:[]};
+  for(let ep=0;ep<epochs;ep++){const perm=[...Array(n).keys()];for(let i=n-1;i>0;i--){const j=Math.floor(r()*(i+1));[perm[i],perm[j]]=[perm[j],perm[i]]}
+    let st=0;for(let c=0;c<nb;c++){const size=Math.floor(n/nb)+(c<n%nb?1:0),idx=perm.slice(st,st+size);st+=size;
+      const gW=net.W.map(w=>new Float64Array(w.length)),gb=net.b.map(v=>new Float64Array(v.length));
+      for(const s of idx){const acts=fwd(net,X[s]);let delta=Float64Array.from(acts[L],(v,q)=>(v-(q===y[s]?1:0))/idx.length);
+        for(let k=L-1;k>=0;k--){const i=net.sz[k],o=net.sz[k+1],a=acts[k],W=net.W[k];
+          for(let p=0;p<i;p++)for(let q=0;q<o;q++)gW[k][p*o+q]+=a[p]*delta[q];for(let q=0;q<o;q++)gb[k][q]+=delta[q];
+          if(k){const nd=new Float64Array(i);for(let p=0;p<i;p++){if(a[p]<=0)continue;let s2=0;for(let q=0;q<o;q++)s2+=delta[q]*W[p*o+q];nd[p]=s2}delta=nd}}}
+      for(let k=0;k<L;k++){const W=net.W[k],vW=net.vW[k];for(let j=0;j<W.length;j++){vW[j]=mom*vW[j]-lr*(gW[k][j]+l2*W[j]);W[j]+=vW[j]}
+        for(let q=0;q<net.b[k].length;q++){net.vb[k][q]=mom*net.vb[k][q]-lr*gb[k][q];net.b[k][q]+=net.vb[k][q]}}}
+    hist.tr.push(xent(net,X,y));hist.te.push(xent(net,Xt,yt))}
+  return hist}
+function runClassifier(o){const r=rngf(1000+o.seed),X=[],y=[];
+  CLS.forEach((key,lab)=>izhTrains(key,o.n,o.jit,o.noise,r).forEach(sp=>{X.push(trainFeatures(sp));y.push(lab)}));
+  const tr=[],te=[];for(let k=0;k<CLS.length;k++){const idx=y.map((v,i)=>v===k?i:-1).filter(i=>i>=0);for(let i=idx.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]]}
+    const nt=Math.round(0.3*idx.length);te.push(...idx.slice(0,nt));tr.push(...idx.slice(nt))}
+  const cols=o.feat===2?[3,1]:[0,1,2,3,4],sel=x=>cols.map(c=>x[c]);
+  const Xtr0=tr.map(i=>sel(X[i])),mu=cols.map((_,j)=>Xtr0.reduce((a,x)=>a+x[j],0)/Xtr0.length),sd=cols.map((_,j)=>Math.sqrt(Xtr0.reduce((a,x)=>a+(x[j]-mu[j])**2,0)/Xtr0.length)+1e-9);
+  const z=x=>Float64Array.from(sel(x),(v,j)=>(v-mu[j])/sd[j]),Xtr=tr.map(i=>z(X[i])),Xte=te.map(i=>z(X[i])),ytr=tr.map(i=>y[i]),yte=te.map(i=>y[i]);
+  const res={X,y,o};
+  for(const [name,hid] of [["mlp",[16,16]],["lr",[]]]){const net=makeNet(cols.length,5,hid,r),h=fitNet(net,Xtr,ytr,Xte,yte,r);
+    const cm=CLS.map(()=>new Array(5).fill(0));Xte.forEach((x,i)=>cm[yte[i]][predict(net,x)]++);
+    res[name]={hist:h,cm,acc:cm.reduce((a,row,i)=>a+row[i],0)/yte.length,nparams:net.nparams}}
+  return res}
+/* Integration: rgba() computed from --accent instead of color-mix(), so the shading also works in browsers without color-mix() */
+function rgbOf(c){c=c.trim();if(c[0]==="#"){if(c.length===4)c="#"+[...c.slice(1)].map(x=>x+x).join("");const n=parseInt(c.slice(1,7),16);return[n>>16&255,n>>8&255,n&255]}
+  const m=c.match(/\d+(\.\d+)?/g);return m?m.slice(0,3).map(Number):[51,34,136]}
+function cmTable(cm,cap){const [ar,ag,ab]=rgbOf(css("--accent"));const rows=cm.map((row,i)=>{const tot=row.reduce((a,b)=>a+b,0)||1;
+    return `<tr><th scope="row">${CLS[i]}</th>`+row.map(v=>{const pc=Math.round(100*v/tot);return `<td style="background:rgba(${ar},${ag},${ab},${(pc/100).toFixed(2)});color:${pc>55?"var(--panel)":"var(--fg)"}">${v}</td>`}).join("")+"</tr>"}).join("");
+  return `<div class="cm"><table><caption>${cap}</caption><thead><tr><th></th>${CLS.map(c=>`<th scope="col">${c}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`}
+let lastCls=null;
+function clsOpts(){return{n:+$("cls-n").value,noise:+$("cls-noise").value,jit:+$("cls-jit").value/100,feat:+$("cls-feat").value,seed:+$("cls-seed").value}}
+const clsKey=()=>JSON.stringify(clsOpts());
+function clsLabels(){out("cls-n",$("cls-n").value);out("cls-noise",nf(+$("cls-noise").value,1));out("cls-jit",$("cls-jit").value+" %");out("cls-seed",$("cls-seed").value)}
+function showCls(res){const cc=["--s1","--s2","--s3","--olive","--lts"].map(css);
+  plot($("cls-sc"),{points:CLS.map((k,c)=>{const xs=[],ys=[];res.X.forEach((x,i)=>{if(res.y[i]===c){xs.push(x[3]);ys.push(x[1])}});return{x:xs,y:ys,col:cc[c],lab:k}}),
+    xr:[-0.02,1.02],yr:[0,Math.min(2.5,Math.max(1,...res.X.map(x=>x[1]))*1.05)],xl:T("fburst"),yl:T("fcv"),xname:T("fburst")+" =",yd:2,scatter:true});
+  const ep=res.mlp.hist.tr.map((_,i)=>i+1),all=[...res.mlp.hist.tr,...res.mlp.hist.te,...res.lr.hist.te];
+  plot($("cls-loss"),{series:[{x:ep,y:res.mlp.hist.tr,col:css("--s2"),lab:"MLP "+T("train").toLowerCase()},{x:ep,y:res.mlp.hist.te,col:css("--s1"),dash:[3,3],lab:"MLP "+T("test").toLowerCase()},{x:ep,y:res.lr.hist.te,col:css("--s3"),dash:[7,3,1.5,3],lab:"LR "+T("test").toLowerCase()}],
+    xr:[0,ep.length],yr:[0,Math.min(2,Math.max(...all))*1.05],xl:T("epoch"),yl:"log-loss",xname:T("epoch"),yd:3});
+  chips($("cls-s"),[[T("acc_mlp"),nf(100*res.mlp.acc,1)+" %"],[T("acc_lr"),nf(100*res.lr.acc,1)+" %"],[T("nparams"),res.mlp.nparams+" / "+res.lr.nparams],[T("ttime"),nf(res.ms,0)+" ms"]]);
+  $("cls-cm").innerHTML=cmTable(res.mlp.cm,T("cm_mlp"))+cmTable(res.lr.cm,T("cm_lr"));$("cls-note").textContent=T("cls_note");uxStaleCls()}
+function runCls(){const b=$("cls-run");busy(b,true);
+  setTimeout(()=>{const t0=performance.now();lastCls=runClassifier(clsOpts());lastCls.key=clsKey();
+    lastCls.ms=performance.now()-t0;showCls(lastCls);busy(b,false,"cls_run")},30)}
+/* DATOS: fin clasificador */
+
+
+// ---------------------------------------------------------------- UX: guide, cases, glossary, worksheet, a11y
+/* UX: language-neutral data. Each challenge/case = [TX key prefix, control values to load].
+   Keys "izh-cls" (class) and "run" (network / classifier) are special; every other key is an input id.
+   Every HH state also fixes temperature and Ca2+ (DATOS controls) so the answers stay valid. */
+const HH0={"hh-dur":100,"hh-na":0,"hh-k":0,"hh-ko":4,"hh-T":6.3,"hh-ca":1};
+const UXG={
+ hh:{obs:"obs_hh",
+  ret:[["r_hh1",{...HH0,"hh-I":10}],
+       ["r_hh2",{...HH0,"hh-I":10,"hh-na":20}],
+       ["r_hh3",{...HH0,"hh-I":20,"hh-dur":1}],
+       ["r_hh4",{...HH0,"hh-I":0}],
+       ["r_hh5",{...HH0,"hh-I":8,"hh-ko":12}],
+       ["r_hh6",{...HH0,"hh-I":10,"hh-T":6.3}]],
+  cases:[["c_hyk",{...HH0,"hh-I":0,"hh-ko":7.5}],
+         ["c_lido",{...HH0,"hh-I":10,"hh-na":30}],
+         ["c_4ap",{...HH0,"hh-I":20,"hh-dur":1,"hh-k":20}],
+         ["c_ttx",{...HH0,"hh-I":30,"hh-na":100}],
+         ["c_hypok",{...HH0,"hh-I":8,"hh-ko":2.5}],
+         ["c_hypoca",{...HH0,"hh-I":0,"hh-ca":0.4}]]},
+ lif:{obs:"obs_lif",
+  ret:[["r_lif1",{"lif-I":1,"lif-dt":"0.1"}],["r_lif2",{"lif-I":1.6,"lif-dt":"0.1"}],["r_lif3",{"lif-I":5,"lif-dt":"0.01"}],["r_lif4",{"lif-I":5,"lif-dt":"0.1"}]]},
+ izh:{obs:"obs_izh",
+  ret:[["r_izh1",{"izh-cls":"RS","izh-I":10}],["r_izh2",{"izh-cls":"RS","izh-I":10}],["r_izh3",{"izh-cls":"FS","izh-I":10}],["r_izh4",{"izh-cls":"RS","izh-I":2}]]},
+ net:{obs:"obs_net",
+  ret:[["r_net1",{"net-g":2,"net-ext":8,"net-ni":200,"net-th":-50,run:1}],["r_net2",{"net-g":1,"net-ext":7,"net-ni":200,"net-th":-50,run:1}],["r_net3",{"net-g":6,"net-ext":7,"net-ni":200,"net-th":-50,run:1}]],
+  cases:[["c_drav",{"net-g":6,"net-ext":7,"net-ni":50,"net-th":-50,run:1}],["c_aed",{"net-g":6,"net-ext":7,"net-ni":50,"net-th":-48,run:1}]]},
+ pro:{obs:"obs_pro",
+  ret:[["r_pro1",{...HH0,"pro-sel":"vc","pro-vc":0}],["r_pro2",{...HH0,"pro-sel":"pp","pro-int":6,"pro-amp":2}],["r_pro3",{...HH0,"hh-na":20,"pro-sel":"fi"}]]},
+ cls:{obs:"obs_cls",
+  ret:[["r_cls1",{"cls-n":120,"cls-noise":2,"cls-jit":10,"cls-feat":"5","cls-seed":0,run:1}],["r_cls2",{"cls-n":120,"cls-noise":2,"cls-jit":10,"cls-feat":"2","cls-seed":0,run:1}]]}};
+const UXK=["hh","lif","izh","net","pro","cls"];           // same order as MODS
+const UXGHOST={hh:["hh-v"],lif:["lif-v"],izh:["izh-v"]};
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+function uxGuideHTML(key){const g=UXG[key];
+  let h=`<h3>${esc(T("ux_obs"))}</h3><ul>${T(g.obs).map(s=>`<li>${esc(s)}</li>`).join("")}</ul>`;
+  h+=`<h3>${esc(T("ux_ret"))}</h3><ol>`+g.ret.map(([k],i)=>`<li class="reto"><p>${esc(T(k+"_q"))}</p>`+
+    `<button class="uxbtn" data-set="${key}:ret:${i}" title="${esc(T("ux_load_t"))}">${esc(T("ux_load"))}</button>`+
+    `<details><summary>${esc(T("ux_ans"))}</summary><div>${esc(T(k+"_a"))}</div></details></li>`).join("")+`</ol>`;
+  if(g.cases)h+=`<h3>${esc(T("ux_cases"))}</h3><div class="cases">`+g.cases.map(([k],i)=>`<article class="case"><h4>${esc(T(k+"_t"))}</h4>`+
+    `<p class="vig">${esc(T(k+"_v"))}</p><p>${esc(T(k+"_q"))}</p><div><button class="uxbtn" data-set="${key}:cases:${i}">${esc(T("ux_apply"))}</button></div>`+
+    `<details><summary>${esc(T("ux_interp"))}</summary><p>${esc(T(k+"_i"))}</p><p class="lim"><b>${esc(T("ux_lim"))}:</b> ${esc(T(k+"_l"))}</p></details></article>`).join("")+`</div>`;
+  return h}
+
+/* UX: load a challenge/case state into the controls and redraw */
+function uxSet(key,map){const m=UXK.indexOf(key);
+  if(UXGHOST[key])grafSnap(UXGHOST[key]);
+  if(map["izh-cls"]){const [a,b,c,d]=IZH[map["izh-cls"]];$("izh-a").value=a;$("izh-b").value=b;$("izh-c").value=c;$("izh-d").value=d}
+  for(const [id,v] of Object.entries(map))if(id!=="izh-cls"&&id!=="run")$(id).value=v;
+  if(m!==cur)show(m);
+  if(key==="net"){netLabels();runNet()}else if(key==="cls"){clsLabels();runCls()}else MODS[m][2]();
+  const pl=$(MODS[m][0]).querySelector(".plot");             // bring the trace into view if it is off-screen
+  const r=pl.getBoundingClientRect();if(r.bottom<0||r.top>innerHeight)pl.scrollIntoView({behavior:"smooth",block:"start"})}
+
+/* UX: reset a tab to the values written in the HTML */
+function uxReset(i){const sec=$(MODS[i][0]);if(UXGHOST[UXK[i]])grafSnap(UXGHOST[UXK[i]]);
+  sec.querySelectorAll(".ctl input").forEach(e=>e.value=e.defaultValue);
+  sec.querySelectorAll(".ctl select").forEach(e=>{if(e.id==="izh-cls")e.value="RS";else{const o=[...e.options].find(o=>o.defaultSelected);if(o)e.value=o.value}});
+  if(i===3){netLabels();runNet()}else if(i===5){clsLabels();runCls()}else MODS[i][2]()}
+
+/* UX: aria-pressed on the preset button that matches the current controls (none if user moved a slider) */
+function uxMark(boxId,flags){$(boxId).querySelectorAll("button").forEach((b,i)=>b.setAttribute("aria-pressed",!!flags[i]))}
+function uxStale(){const [g,e,ni,th]=netParams();
+  uxMark("net-presets",NETP.map(([,q])=>q.g===g&&q.e===e&&q.ni===ni&&(q.th??-50)===th));
+  const st=!!lastNet&&!!lastNet.p&&lastNet.p.some((x,i)=>x!==[g,e,ni,th][i]);
+  $("net-run").classList.toggle("stale",st);$("net-stale").hidden=!st}
+function uxStaleCls(){const st=!!lastCls&&lastCls.key!==clsKey();$("cls-run").classList.toggle("stale",st);$("cls-stale").hidden=!st}
+
+/* UX: phones — shorter first canvas so the sticky trace leaves room for the controls */
+function uxHeights(){const narrow=innerWidth<=820;
+  document.querySelectorAll(".mod>.out>.plot:first-child canvas:not(.ov)").forEach(c=>{if(!c.dataset.h)c.dataset.h=c.getAttribute("height");c.setAttribute("height",narrow?Math.min(+c.dataset.h,190):c.dataset.h)})}
+
+/* UX: printable worksheet (all tabs) with an answer key on a separate page */
+function uxWorksheet(){const L=k=>`<div class="ln">${esc(T(k))}:</div>`;let n=0,key="";
+  let h=`<h1>${esc(T("ux_ws_t"))}</h1><p>${esc(T("ux_ws_name"))}: ______________________________ &nbsp; ${esc(T("ux_ws_date"))}: ____________</p><p>${esc(T("ux_ws_intro"))}</p>`;
+  UXK.forEach((k,m)=>{const g=UXG[k];h+=`<h2>${m+1}. ${esc(T(MODS[m][1]))}</h2>`;key+=`<h2>${m+1}. ${esc(T(MODS[m][1]))}</h2>`;
+    g.ret.forEach(([r])=>{n++;h+=`<div class="wsq"><p><b>${n}.</b> ${esc(T(r+"_q"))}</p>${L("ux_pred")}${L("ux_obsv")}${L("ux_expl")}</div>`;key+=`<p><b>${n}.</b> ${esc(T(r+"_a"))}</p>`});
+    (g.cases||[]).forEach(([c])=>{n++;h+=`<div class="wsq"><p><b>${n}. ${esc(T("ux_ws_case"))}: ${esc(T(c+"_t"))}.</b> <i>${esc(T(c+"_v"))}</i></p><p>${esc(T(c+"_q"))}</p>${L("ux_obsv")}${L("ux_expl")}${L("ux_lim")}</div>`;
+      key+=`<p><b>${n}.</b> ${esc(T(c+"_i"))} <i>${esc(T("ux_lim"))}: ${esc(T(c+"_l"))}</i></p>`})});
+  $("ws").innerHTML=h+`<section class="key"><h1>${esc(T("ux_ws_key"))}</h1>${key}</section>`}
+
+/* UX: theme — explicit light/dark override stored in localStorage "nse-theme" (GRAF's MutationObserver redraws) */
+const uxDark=()=>{const t=document.documentElement.dataset.theme;return t?t==="dark":matchMedia("(prefers-color-scheme: dark)").matches};
+function uxTheme(t){if(t)document.documentElement.dataset.theme=t;else delete document.documentElement.dataset.theme}
+
+/* UX: everything that depends on language (called from texts()) */
+function uxTexts(){
+  UXK.forEach(k=>$("gb-"+k).innerHTML=uxGuideHTML(k));
+  $("gl-dl").innerHTML=T("gloss").map(([t,d])=>`<dt>${esc(t)}</dt><dd>${esc(d)}</dd>`).join("");
+  $("ux-ws-btn").title=T("ux_print_t");$("ux-theme-btn").title=T("ux_theme_t");
+  document.querySelectorAll("[data-reset]").forEach(b=>b.title=T("ux_reset_t"))}
+
+function uxInit(){
+  // first visit
+  let seen=false;try{seen=localStorage.getItem("nse-onb")==="1"}catch(e){}
+  $("ux-onb").hidden=seen;
+  $("ux-onb-ok").onclick=()=>{$("ux-onb").hidden=true;try{localStorage.setItem("nse-onb","1")}catch(e){};$("tab-"+cur).focus()};
+  // glossary
+  const gl=$("gl"),openGl=()=>{if(gl.showModal)gl.showModal();else gl.setAttribute("open","")};
+  $("ux-gl-btn").onclick=openGl;$("ux-onb-gl").onclick=openGl;
+  $("gl-close").onclick=()=>{if(gl.close)gl.close();else gl.removeAttribute("open")};
+  gl.addEventListener("click",e=>{if(e.target===gl&&gl.close)gl.close()});   // click on backdrop closes
+  // challenges, cases, resets (event delegation survives texts() rebuilds)
+  document.addEventListener("click",e=>{const b=e.target.closest("[data-set],[data-reset]");if(!b)return;
+    if(b.dataset.reset!==undefined)return uxReset(+b.dataset.reset);
+    const [k,kind,i]=b.dataset.set.split(":");uxSet(k,UXG[k][kind][+i][1])});
+  // keyboard: arrow keys / Home / End move between tabs (WAI-ARIA tabs pattern)
+  $("tabs").addEventListener("keydown",e=>{const n=MODS.length;let k=null;
+    if(e.key==="ArrowRight")k=(cur+1)%n;else if(e.key==="ArrowLeft")k=(cur+n-1)%n;else if(e.key==="Home")k=0;else if(e.key==="End")k=n-1;
+    if(k===null)return;e.preventDefault();show(k);$("tab-"+k).focus()});
+  // theme
+  try{const t=localStorage.getItem("nse-theme");if(t==="light"||t==="dark")uxTheme(t)}catch(e){}
+  $("ux-theme-btn").onclick=()=>{const t=uxDark()?"light":"dark";uxTheme(t);try{localStorage.setItem("nse-theme",t)}catch(e){}};
+  // print: worksheet button, and always print canvases in light colours
+  let prevTheme=null;
+  window.addEventListener("beforeprint",()=>{prevTheme=document.documentElement.dataset.theme||null;if(uxDark()){uxTheme("light");grafRedraw()}else prevTheme=undefined});
+  window.addEventListener("afterprint",()=>{document.body.classList.remove("ws-print");if(prevTheme!==undefined){uxTheme(prevTheme);grafRedraw()}});
+  $("ux-ws-btn").onclick=()=>{uxWorksheet();document.body.classList.add("ws-print");window.print()};
+  uxHeights()}
+// ---------------------------------------------------------------- UX: end
+
+
+// ---------------------------------------------------------------- wiring
+const $=id=>document.getElementById(id);
+const out=(id,v)=>{$(id+"-o").textContent=v};
+const MODS=[["m-hh","tab_hh",updHH],["m-lif","tab_lif",updLIF],["m-izh","tab_izh",updIZH],["m-net","tab_net",()=>{lastNet?netShow(lastNet):runNet()}],
+  ["m-pro","tab_pro",()=>updPro()],["m-cls","tab_cls",()=>{clsLabels();lastCls?showCls(lastCls):runCls()}]];
+let cur=0;
+function show(i){cur=i;MODS.forEach(([id],k)=>{$(id).hidden=k!==i;$("tab-"+k).setAttribute("aria-selected",k===i);$("tab-"+k).tabIndex=k===i?0:-1});
+  if(location.hash!=="#"+MODS[i][0].slice(2))history.replaceState(null,"","#"+MODS[i][0].slice(2));MODS[i][2]()}
+function texts(){document.documentElement.lang=lang;document.title=T("doc_title");document.querySelectorAll("[data-i]").forEach(e=>e.textContent=T(e.dataset.i));
+  $("tabs").innerHTML=MODS.map(([,k],i)=>`<button role="tab" id="tab-${i}" aria-selected="${i===cur}" aria-controls="${MODS[i][0]}" tabindex="${i===cur?0:-1}"><span class="n">${i+1}</span>${T(k)}</button>`).join("");
+  MODS.forEach((_,i)=>$("tab-"+i).onclick=()=>show(i));
+  $("hh-presets").innerHTML=HHP.map(([k],i)=>`<button data-p="${i}">${T(k)}</button>`).join("");
+  $("hh-presets").querySelectorAll("button").forEach(b=>b.onclick=()=>{const p=HHP[+b.dataset.p][1];$("hh-na").value=p.na;$("hh-k").value=p.k;$("hh-ko").value=p.ko;$("hh-I").value=p.I;$("hh-T").value=p.T??6.3;$("hh-ca").value=p.ca??1;updHH()});
+  $("net-presets").innerHTML=NETP.map(([k],i)=>`<button data-p="${i}">${T(k)}</button>`).join("");
+  $("net-presets").querySelectorAll("button").forEach(b=>b.onclick=()=>{const p=NETP[+b.dataset.p][1];$("net-g").value=p.g;$("net-ext").value=p.e;$("net-ni").value=p.ni;$("net-th").value=p.th??-50;netLabels();runNet()});
+  $("izh-cls").innerHTML=Object.keys(IZH).map(k=>`<option value="${k}">${k} · ${T("cl_"+k)}</option>`).join("")+`<option value="custom" disabled>${T("ux_custom")}</option>`;
+  [...$("lif-dt").options].forEach(o=>o.textContent=nf(+o.value,o.value.length>2?o.value.length-2:0));
+  
+  uxTexts();grafTexts()}
+function netLabels(){out("net-g",nf(+$("net-g").value,1));out("net-ext",nf(+$("net-ext").value,1));out("net-ni",$("net-ni").value);out("net-th",nf(+$("net-th").value,1))}
+["hh-I","hh-dur","hh-na","hh-k","hh-ko","hh-T","hh-ca"].forEach(id=>$(id).addEventListener("input",updHH));
+["lif-I","lif-dt"].forEach(id=>$(id).addEventListener("input",updLIF));
+["izh-a","izh-b","izh-c","izh-d","izh-I"].forEach(id=>$(id).addEventListener("input",updIZH));
+["net-g","net-ext","net-ni","net-th"].forEach(id=>$(id).addEventListener("input",()=>{netLabels();uxStale()}));
+$("net-run").onclick=runNet;
+$("pro-sel").addEventListener("change",()=>updPro());["pro-vc","pro-int","pro-amp"].forEach(id=>$(id).addEventListener("input",()=>updPro()));$("pro-run").onclick=()=>updPro(true);
+["cls-n","cls-noise","cls-jit","cls-seed","cls-feat"].forEach(id=>$(id).addEventListener("input",()=>{clsLabels();uxStaleCls()}));$("cls-run").onclick=runCls;
+
+grafEnhance(); /* GRAF: toolbars, overlay canvases, readouts (before texts() so their labels get translated) */
+texts();
+grafWireGhost();
+$("izh-cls").addEventListener("change",()=>{const [a,b,c,d]=IZH[$("izh-cls").value];$("izh-a").value=a;$("izh-b").value=b;$("izh-c").value=c;$("izh-d").value=d;updIZH()});
+netLabels();clsLabels();
+uxInit(); /* UX: must run before show() */
+const start=MODS.findIndex(([id])=>"#"+id.slice(2)===location.hash);show(start<0?0:start);
+window.addEventListener("hashchange",()=>{const k=MODS.findIndex(([id])=>"#"+id.slice(2)===location.hash);if(k>=0&&k!==cur)show(k)});
+let rz;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{uxHeights();grafRedraw()},150)});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",grafRedraw);
+/* GRAF: redraw when data-theme changes, when the device pixel ratio changes, and once web fonts load */
+new MutationObserver(grafRedraw).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+(function dprWatch(){const m=matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);m.addEventListener("change",()=>{grafRedraw();dprWatch()},{once:true})})();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(grafRedraw);
+</script>
+</body>
+</html>
