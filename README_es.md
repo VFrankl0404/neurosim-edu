@@ -34,4 +34,6 @@ La carpeta `web/` contiene el simulador en el navegador (Material suplementario 
 Código: MIT. Texto y figuras: CC BY 4.0. Cite el artículo y la versión archivada (ver `CITATION.cff`).
 
 - Repositorio: [URL de GitHub: por añadir]
+- Repositorio: https://github.com/VFrankl0404/neurosim-edu
+- Simulador en el navegador (sin instalación): https://vfrankl0404.github.io/neurosim-edu/es.html
 - Versión archivada: [DOI de Zenodo: por añadir]

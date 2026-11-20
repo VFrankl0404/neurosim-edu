@@ -8,6 +8,6 @@ authors:
 version: 1.1.0
 date-released: "[YYYY-MM-DD]"
 license: MIT
-repository-code: "[GitHub URL — to be added]"
-doi: "[Zenodo DOI — to be added]"
+repository-code: "https://github.com/VFrankl0404/neurosim-edu"
+url: "https://vfrankl0404.github.io/neurosim-edu/"
 keywords: [computational neuroscience, medical education, Hodgkin-Huxley, integrate-and-fire, Izhikevich, neural networks, machine learning, open educational resources, Spanish]
