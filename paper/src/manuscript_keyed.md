@@ -276,11 +276,11 @@ Seven modules and a few hundred lines of NumPy are enough to follow the path fro
 
 **Ethics approval.** Not applicable: no human participants, animals or patient data were used.
 
-**Funding.** [To be completed by the authors, or "This research received no specific grant from any funding agency in the public, commercial or not-for-profit sectors."]
+**Funding.** This research received no specific grant from any funding agency in the public, commercial or not-for-profit sectors.
 
 **Competing interests.** The authors declare no competing interests.
 
-**Author contributions (CRediT).** [Author 1]: conceptualisation, methodology, software, validation, writing (original draft), writing (review and editing). [Author 2]: [roles]. All authors approved the final version.
+**Author contributions (CRediT).** Hesed Virto-Farfan: conceptualisation, data curation, formal analysis, investigation, methodology, project administration, resources, software, supervision, validation, visualisation, writing (original draft), writing (review and editing). The author approved the final version.
 
 **Use of generative AI.** An AI assistant (Claude, Anthropic) was used to help write and test code, draft and edit the text, search for and check references, re-analyse the statistics and produce the figures. The authors reviewed, ran and edited all material, verified the references against the original sources and take full responsibility for the content.
 
