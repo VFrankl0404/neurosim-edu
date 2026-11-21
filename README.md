@@ -53,4 +53,4 @@ Code: MIT. Text and figures: CC BY 4.0. Please cite the article and the archived
 
 - Repository: https://github.com/VFrankl0404/neurosim-edu
 - Browser simulator (no installation): https://vfrankl0404.github.io/neurosim-edu/ (Spanish: es.html, English: en.html)
-- Archived release: [Zenodo DOI — to be added]
+- Archived release: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24413034.svg)](https://doi.org/10.5281/zenodo.24413034)
