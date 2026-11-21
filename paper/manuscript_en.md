@@ -82,7 +82,7 @@ For classrooms without Python, the same models are available as an interactive b
 
 ## 2.8 Reproducibility and availability
 
-All code, notebooks, figures (PNG at 600 dpi and vector PDF, in English and Spanish), the browser simulator, the results file and the scripts that regenerate them are openly available at [GitHub URL — to be added] and archived at [Zenodo DOI — to be added], under the MIT licence (code) and CC BY 4.0 (text and figures). Running `make_figures.py` reproduces every number and figure in this article in 2–4 minutes on a current laptop. No human or animal data were used, so ethical approval was not required.
+All code, notebooks, figures (PNG at 600 dpi and vector PDF, in English and Spanish), the browser simulator, the results file and the scripts that regenerate them are openly available at https://github.com/VFrankl0404/neurosim-edu and archived at https://doi.org/10.5281/zenodo.24413034, under the MIT licence (code) and CC BY 4.0 (text and figures). Running `make_figures.py` reproduces every number and figure in this article in 2–4 minutes on a current laptop. No human or animal data were used, so ethical approval was not required.
 
 # 3. Results: verification of the implementations
 
@@ -272,7 +272,7 @@ Seven modules and a few hundred lines of NumPy are enough to follow the path fro
 
 # Declarations
 
-**Data and code availability.** Code, notebooks (English and Spanish), the browser simulator, figures and results are available at [GitHub URL — to be added] and archived at [Zenodo DOI — to be added]. Code: MIT licence. Text and figures: CC BY 4.0.
+**Data and code availability.** Code, notebooks (English and Spanish), the browser simulator, figures and results are available at https://github.com/VFrankl0404/neurosim-edu and archived at https://doi.org/10.5281/zenodo.24413034. Code: MIT licence. Text and figures: CC BY 4.0.
 
 **Ethics approval.** Not applicable: no human participants, animals or patient data were used.
 

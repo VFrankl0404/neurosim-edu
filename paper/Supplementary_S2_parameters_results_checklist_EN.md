@@ -113,7 +113,7 @@ Applicable guidance: for the simulations, the ten rules for reproducible computa
 | Software versions | Sandve rule 3 | Methods 2.2; `results.json` (environment block); `requirements.txt` |
 | Hardware for timings | Sandve | Methods 2.2, 2.6; `results.json` |
 | Code that regenerates every number | Sandve rules 1, 8 | Methods 2.8; `make_figures.py`, `make_supplement_figures.py` |
-| Archived code with DOI | Sandve rule 10 | Methods 2.8; Declarations ([Zenodo DOI — to be added]) |
+| Archived code with DOI | Sandve rule 10 | Methods 2.8; Declarations (https://doi.org/10.5281/zenodo.24413034) |
 | Data-generating process for ML | DOME "data"; TRIPOD+AI 5–7 | Methods 2.4; Table S2.1 |
 | Train/test separation and leakage | DOME; TRIPOD+AI 12 | Methods 2.4 (standardisation on each training set; independent test set) |
 | Hyperparameter selection | DOME "optimisation"; TRIPOD+AI 12 | Methods 2.4 (set before evaluation, not tuned on test data) |
